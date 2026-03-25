@@ -18,15 +18,14 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  const [{ data: profile }, { data: settings }] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', user.id).single(),
+    supabase.from('settings').select('logo_url').eq('id', 1).single(),
+  ])
 
   return (
     <div className="flex h-screen bg-gray-100">
-      <Sidebar role={profile?.role ?? 'user'} />
+      <Sidebar role={profile?.role ?? 'user'} logoUrl={settings?.logo_url} />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Header profile={profile as Profile | null} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
