@@ -164,7 +164,7 @@ export default function SettingsForm() {
                 value={settings[key as keyof Settings]}
                 onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.value }))}
                 placeholder={placeholder}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 placeholder:text-gray-400"
               />
             </div>
           ))}
@@ -176,7 +176,7 @@ export default function SettingsForm() {
               value={settings.address}
               onChange={(e) => setSettings((s) => ({ ...s, address: e.target.value }))}
               placeholder="Str. Exemplu nr. 1, Cluj-Napoca"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 placeholder:text-gray-400"
             />
           </div>
         </div>
