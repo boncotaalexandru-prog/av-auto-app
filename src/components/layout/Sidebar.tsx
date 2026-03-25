@@ -1,0 +1,61 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import type { Role } from '@/types'
+
+interface NavItem {
+  label: string
+  href: string
+  icon: string
+  adminOnly?: boolean
+}
+
+const navItems: NavItem[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: '⊞' },
+  { label: 'Piese', href: '/piese', icon: '⚙' },
+  { label: 'Comenzi', href: '/comenzi', icon: '📋' },
+  { label: 'Clienti', href: '/clienti', icon: '👥' },
+  { label: 'Rapoarte', href: '/rapoarte', icon: '📊', adminOnly: true },
+]
+
+export default function Sidebar({ role }: { role: Role }) {
+  const pathname = usePathname()
+
+  const visibleItems = navItems.filter(
+    (item) => !item.adminOnly || role === 'admin'
+  )
+
+  return (
+    <aside className="w-64 bg-gray-900 text-white flex flex-col">
+      <div className="px-6 py-5 border-b border-gray-700">
+        <h1 className="text-lg font-bold tracking-wide">AV Auto</h1>
+        <p className="text-xs text-gray-400 mt-0.5">Piese Camioane</p>
+      </div>
+
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {visibleItems.map((item) => {
+          const isActive =
+            item.href === '/dashboard'
+              ? pathname === '/dashboard'
+              : pathname.startsWith(item.href)
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }`}
+            >
+              <span className="text-base">{item.icon}</span>
+              {item.label}
+            </Link>
+          )
+        })}
+      </nav>
+    </aside>
+  )
+}
