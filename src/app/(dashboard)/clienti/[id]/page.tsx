@@ -306,16 +306,19 @@ export default function ClientPage() {
             {masini.map(m => (
               <div key={m.id} className="py-3 flex items-center gap-3">
                 <span className="font-mono text-sm font-bold text-gray-900 w-32 shrink-0">{m.nr_inmatriculare || '—'}</span>
-                <span className="text-sm text-gray-800 w-44 shrink-0">{m.marca || '—'}</span>
+                <span className="text-sm text-gray-900 w-44 shrink-0">{m.marca || '—'}</span>
                 {m.vin && (
                   <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-xs text-gray-800">{m.vin}</span>
+                    <span className="font-mono text-sm text-gray-900">{m.vin}</span>
                     <button
                       onClick={() => navigator.clipboard.writeText(m.vin!)}
-                      className="text-xs text-blue-600 hover:text-blue-800 px-1.5 py-0.5 border border-blue-300 rounded hover:bg-blue-50 transition-colors"
+                      className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded p-1 transition-colors"
                       title="Copiaza VIN"
                     >
-                      Copy
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
                     </button>
                   </div>
                 )}
