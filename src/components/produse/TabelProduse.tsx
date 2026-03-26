@@ -91,19 +91,19 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Cod</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Denumire</th>
+                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Cod</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Producator</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">UM</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Pret</th>
+                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Pret lista</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
                 {produse.map(p => (
                   <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{p.cod || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-900">{p.nume}</td>
+                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{p.cod || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-600">
                       {editing?.id === p.id ? (
                         <input
