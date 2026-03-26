@@ -298,7 +298,7 @@ export default function ClientPage() {
         {masini.length === 0 ? (
           <p className="text-sm text-gray-600">Nicio masina inregistrata.</p>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-gray-200">
             {masini.map(m => (
               <div key={m.id} className="py-2.5 flex items-center gap-4">
                 <span className="font-mono text-sm font-semibold text-gray-900 w-32">{m.nr_inmatriculare || '—'}</span>
@@ -306,7 +306,7 @@ export default function ClientPage() {
                 {m.vin && <span className="font-mono text-xs text-gray-600">{m.vin}</span>}
                 <button
                   onClick={() => deleteMasina(m.id)}
-                  className="text-xs text-red-400 hover:text-red-600"
+                  className="text-xs text-red-600 hover:text-red-600"
                 >
                   Sterge
                 </button>
@@ -320,7 +320,7 @@ export default function ClientPage() {
       {preturi.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="font-semibold text-gray-900 mb-4">Preturi speciale</h3>
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-gray-200">
             {preturi.map(p => (
               <div key={p.id} className="py-2.5 flex items-center gap-4">
                 {p.produse && (

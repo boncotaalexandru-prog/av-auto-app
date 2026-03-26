@@ -114,8 +114,8 @@ export default function OfertaNoua({ onCreated }: { onCreated: () => void }) {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-bold text-gray-900">Oferta noua</h2>
@@ -211,7 +211,7 @@ export default function OfertaNoua({ onCreated }: { onCreated: () => void }) {
                 <textarea
                   value={necesar}
                   onChange={e => setNecesar(e.target.value)}
-                  rows={5}
+                  rows={8}
                   placeholder="Ex: filtru ulei x2, curea distributie, kit ambreiaj..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
