@@ -20,6 +20,7 @@ interface Furnizor {
   pers_contact: string | null
   telefon: string | null
   observatii: string | null
+  is_favorit: boolean
 }
 
 interface OraRidicare {
@@ -51,6 +52,7 @@ export default function FurnizorPage() {
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<Partial<Furnizor>>({})
+  const [favorit, setFavorit] = useState(false)
   const [oraNoua, setOraNoua] = useState('')
   const [addingOra, setAddingOra] = useState(false)
 
@@ -63,6 +65,7 @@ export default function FurnizorPage() {
     ]).then(([{ data: f }, { data: o }]) => {
       setFurnizor(f)
       setForm(f ?? {})
+      setFavorit(f?.is_favorit ?? false)
       setOre(o ?? [])
       setLoading(false)
     })
@@ -80,6 +83,12 @@ export default function FurnizorPage() {
     if (data) { setFurnizor(data); setForm(data) }
     setSaving(false)
     setEditMode(false)
+  }
+
+  async function toggleFavorit() {
+    const nou = !favorit
+    setFavorit(nou)
+    await createClient().from('furnizori').update({ is_favorit: nou }).eq('id', id)
   }
 
   async function addOra() {
@@ -110,6 +119,13 @@ export default function FurnizorPage() {
           ← Inapoi
         </button>
         <h2 className="text-2xl font-bold text-gray-900 flex-1">{furnizor.denumire}</h2>
+        <button
+          onClick={toggleFavorit}
+          className="text-2xl leading-none transition-transform hover:scale-110"
+          title={favorit ? 'Elimina din favorite' : 'Adauga la favorite'}
+        >
+          {favorit ? '★' : '☆'}
+        </button>
         {!editMode ? (
           <button onClick={() => setEditMode(true)}
             className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">

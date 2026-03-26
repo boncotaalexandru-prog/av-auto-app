@@ -10,6 +10,7 @@ interface Furnizor {
   cod_fiscal: string | null
   localitate: string | null
   telefon: string | null
+  is_favorit: boolean
   furnizori_ore: { ora: string }[]
 }
 
@@ -29,7 +30,8 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
 
     let query = supabase
       .from('furnizori')
-      .select('id, denumire, cod_fiscal, localitate, telefon, furnizori_ore(ora)')
+      .select('id, denumire, cod_fiscal, localitate, telefon, is_favorit, furnizori_ore(ora)')
+      .order('is_favorit', { ascending: false })
       .order('denumire')
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
@@ -42,6 +44,12 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
       setLoading(false)
     })
   }, [page, search, refresh])
+
+  async function toggleFavorit(f: Furnizor) {
+    const nou = !f.is_favorit
+    setFurnizori(prev => prev.map(x => x.id === f.id ? { ...x, is_favorit: nou } : x))
+    await createClient().from('furnizori').update({ is_favorit: nou }).eq('id', f.id)
+  }
 
   return (
     <div className="space-y-4">
@@ -57,9 +65,9 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {loading ? (
-          <p className="text-sm text-gray-500 p-6">Se incarca...</p>
+          <p className="text-sm text-gray-600 p-6">Se incarca...</p>
         ) : furnizori.length === 0 ? (
-          <p className="text-sm text-gray-500 p-6">
+          <p className="text-sm text-gray-600 p-6">
             {search ? 'Niciun rezultat.' : 'Nu exista furnizori. Importa un fisier XLS.'}
           </p>
         ) : (
@@ -67,18 +75,28 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Denumire</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Cod fiscal</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Localitate</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Telefon</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Ore ridicare</th>
+                  <th className="w-10 px-4 py-3" />
+                  <th className="text-left px-4 py-3 text-gray-700 font-medium">Denumire</th>
+                  <th className="text-left px-4 py-3 text-gray-700 font-medium">Cod fiscal</th>
+                  <th className="text-left px-4 py-3 text-gray-700 font-medium">Localitate</th>
+                  <th className="text-left px-4 py-3 text-gray-700 font-medium">Telefon</th>
+                  <th className="text-left px-4 py-3 text-gray-700 font-medium">Ore ridicare</th>
                 </tr>
               </thead>
               <tbody>
                 {furnizori.map(f => {
                   const ore = [...(f.furnizori_ore ?? [])].sort((a, b) => a.ora.localeCompare(b.ora))
                   return (
-                    <tr key={f.id} className="border-t border-gray-100">
+                    <tr key={f.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => toggleFavorit(f)}
+                          className="text-lg leading-none transition-transform hover:scale-110"
+                          title={f.is_favorit ? 'Elimina din favorite' : 'Adauga la favorite'}
+                        >
+                          {f.is_favorit ? '★' : '☆'}
+                        </button>
+                      </td>
                       <td className="px-4 py-2.5">
                         <button
                           onClick={() => router.push(`/furnizori/${f.id}`)}
@@ -87,16 +105,16 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
                           {f.denumire}
                         </button>
                       </td>
-                      <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{f.cod_fiscal || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{f.localitate || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{f.telefon || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-700 font-mono text-xs">{f.cod_fiscal || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-700">{f.localitate || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-700">{f.telefon || '—'}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1.5 items-center">
-                          <span className="px-2 py-0.5 bg-orange-50 border border-orange-200 rounded text-xs font-medium text-orange-700">
+                          <span className="px-2 py-0.5 bg-orange-500 rounded text-xs font-semibold text-white">
                             Stoc CT
                           </span>
                           {ore.map((o, i) => (
-                            <span key={i} className="px-2 py-0.5 bg-blue-50 border border-blue-200 rounded text-xs font-semibold text-blue-800">
+                            <span key={i} className="px-2 py-0.5 bg-blue-600 rounded text-xs font-semibold text-white">
                               {o.ora.slice(0, 5)}
                             </span>
                           ))}
