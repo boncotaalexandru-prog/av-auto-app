@@ -85,7 +85,7 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
                 {clienti.map(c => (
                   <tr
                     key={c.id}
-                    className="border-t border-gray-100"
+                    className="border-t border-gray-200"
                   >
                     <td className="px-4 py-2.5">
                       <button

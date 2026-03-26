@@ -115,7 +115,7 @@ export default function FurnizorPage() {
     <div className="space-y-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => router.push('/furnizori')} className="text-gray-400 hover:text-gray-600 text-sm">
+        <button onClick={() => router.push('/furnizori')} className="text-gray-600 hover:text-gray-600 text-sm">
           ← Inapoi
         </button>
         <h2 className="text-2xl font-bold text-gray-900 flex-1">{furnizor.denumire}</h2>
@@ -124,7 +124,9 @@ export default function FurnizorPage() {
           className="text-2xl leading-none transition-transform hover:scale-110"
           title={favorit ? 'Elimina din favorite' : 'Adauga la favorite'}
         >
-          {favorit ? '★' : '☆'}
+          <span className={favorit ? 'text-yellow-400' : 'text-gray-900'}>
+            {favorit ? '★' : '☆'}
+          </span>
         </button>
         {!editMode ? (
           <button onClick={() => setEditMode(true)}
@@ -179,7 +181,7 @@ export default function FurnizorPage() {
           ))}
 
           {ore.length === 0 && !addingOra && (
-            <span className="text-sm text-gray-400 italic">Nicio ora configurata</span>
+            <span className="text-sm text-gray-600 italic">Nicio ora configurata</span>
           )}
 
           {/* Input ora noua */}
@@ -209,7 +211,7 @@ export default function FurnizorPage() {
           )}
         </div>
 
-        <p className="text-xs text-gray-400 mt-3">
+        <p className="text-xs text-gray-600 mt-3">
           La o ridicare poti alege una din orele de mai sus sau Stoc CT.
         </p>
       </div>
@@ -230,7 +232,7 @@ export default function FurnizorPage() {
                 />
               ) : (
                 <p className="text-sm text-gray-900">
-                  {(furnizor[key as keyof Furnizor] as string) || <span className="text-gray-400">—</span>}
+                  {(furnizor[key as keyof Furnizor] as string) || <span className="text-gray-600">—</span>}
                 </p>
               )}
             </div>
@@ -250,7 +252,7 @@ export default function FurnizorPage() {
           />
         ) : (
           <p className="text-sm text-gray-900 whitespace-pre-wrap">
-            {furnizor.observatii || <span className="text-gray-400">—</span>}
+            {furnizor.observatii || <span className="text-gray-600">—</span>}
           </p>
         )}
       </div>

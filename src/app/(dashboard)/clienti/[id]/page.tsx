@@ -132,7 +132,7 @@ export default function ClientPage() {
     <div className="space-y-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => router.push('/clienti')} className="text-gray-400 hover:text-gray-600 text-sm">
+        <button onClick={() => router.push('/clienti')} className="text-gray-600 hover:text-gray-600 text-sm">
           ← Inapoi
         </button>
         <h2 className="text-2xl font-bold text-gray-900 flex-1">{client.denumire}</h2>
@@ -177,7 +177,7 @@ export default function ClientPage() {
                   className="w-full px-2 py-1 border border-blue-400 rounded text-sm text-gray-900"
                 />
               ) : (
-                <p className="text-sm text-gray-900">{(client[key as keyof Client] as string) || <span className="text-gray-400">—</span>}</p>
+                <p className="text-sm text-gray-900">{(client[key as keyof Client] as string) || <span className="text-gray-600">—</span>}</p>
               )}
             </div>
           ))}
@@ -220,7 +220,7 @@ export default function ClientPage() {
               />
             ) : (
               <p className="text-sm text-gray-900">
-                {client.termen_plata ? `${client.termen_plata} zile` : <span className="text-gray-400">—</span>}
+                {client.termen_plata ? `${client.termen_plata} zile` : <span className="text-gray-600">—</span>}
               </p>
             )}
           </div>
@@ -235,7 +235,7 @@ export default function ClientPage() {
               />
             ) : (
               <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                {client.observatii || <span className="text-gray-400">—</span>}
+                {client.observatii || <span className="text-gray-600">—</span>}
               </p>
             )}
           </div>
@@ -296,14 +296,14 @@ export default function ClientPage() {
         )}
 
         {masini.length === 0 ? (
-          <p className="text-sm text-gray-400">Nicio masina inregistrata.</p>
+          <p className="text-sm text-gray-600">Nicio masina inregistrata.</p>
         ) : (
           <div className="divide-y divide-gray-100">
             {masini.map(m => (
               <div key={m.id} className="py-2.5 flex items-center gap-4">
                 <span className="font-mono text-sm font-semibold text-gray-900 w-32">{m.nr_inmatriculare || '—'}</span>
                 <span className="text-sm text-gray-600 flex-1">{m.marca || '—'}</span>
-                {m.vin && <span className="font-mono text-xs text-gray-400">{m.vin}</span>}
+                {m.vin && <span className="font-mono text-xs text-gray-600">{m.vin}</span>}
                 <button
                   onClick={() => deleteMasina(m.id)}
                   className="text-xs text-red-400 hover:text-red-600"
@@ -325,7 +325,7 @@ export default function ClientPage() {
               <div key={p.id} className="py-2.5 flex items-center gap-4">
                 {p.produse && (
                   <>
-                    <span className="font-mono text-xs text-gray-400 w-24">{p.produse.cod || '—'}</span>
+                    <span className="font-mono text-xs text-gray-600 w-24">{p.produse.cod || '—'}</span>
                     <span className="text-sm text-gray-900 flex-1">{p.produse.nume}</span>
                   </>
                 )}

@@ -87,14 +87,16 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
                 {furnizori.map(f => {
                   const ore = [...(f.furnizori_ore ?? [])].sort((a, b) => a.ora.localeCompare(b.ora))
                   return (
-                    <tr key={f.id} className="border-t border-gray-100 hover:bg-gray-50">
+                    <tr key={f.id} className="border-t border-gray-200 hover:bg-gray-50">
                       <td className="px-4 py-2.5">
                         <button
                           onClick={() => toggleFavorit(f)}
                           className="text-lg leading-none transition-transform hover:scale-110"
                           title={f.is_favorit ? 'Elimina din favorite' : 'Adauga la favorite'}
                         >
-                          {f.is_favorit ? '★' : '☆'}
+                          <span className={f.is_favorit ? 'text-yellow-400' : 'text-gray-900'}>
+                            {f.is_favorit ? '★' : '☆'}
+                          </span>
                         </button>
                       </td>
                       <td className="px-4 py-2.5">

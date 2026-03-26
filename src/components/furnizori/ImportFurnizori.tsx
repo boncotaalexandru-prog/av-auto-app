@@ -128,7 +128,7 @@ export default function ImportFurnizori({ onDone }: { onDone: () => void }) {
         </div>
       </div>
       {stats.noi > 0 && (
-        <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-lg">
+        <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
@@ -139,14 +139,14 @@ export default function ImportFurnizori({ onDone }: { onDone: () => void }) {
             </thead>
             <tbody>
               {furnizori.slice(0, 50).map((f, i) => (
-                <tr key={i} className="border-t border-gray-100">
+                <tr key={i} className="border-t border-gray-200">
                   <td className="px-3 py-1.5 text-gray-900">{f.denumire}</td>
                   <td className="px-3 py-1.5 text-gray-500">{f.cod_fiscal || '—'}</td>
                   <td className="px-3 py-1.5 text-gray-500">{f.localitate || '—'}</td>
                 </tr>
               ))}
               {furnizori.length > 50 && (
-                <tr><td colSpan={3} className="px-3 py-2 text-center text-gray-400">... si inca {furnizori.length - 50}</td></tr>
+                <tr><td colSpan={3} className="px-3 py-2 text-center text-gray-600">... si inca {furnizori.length - 50}</td></tr>
               )}
             </tbody>
           </table>

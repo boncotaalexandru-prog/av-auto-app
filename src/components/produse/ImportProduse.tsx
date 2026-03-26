@@ -138,7 +138,7 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
         {stats.noi === 0 ? (
           <p className="text-sm text-gray-500">Toate produsele exista deja in baza de date.</p>
         ) : (
-          <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-lg">
+          <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
@@ -149,7 +149,7 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
               </thead>
               <tbody>
                 {produse.slice(0, 50).map((p, i) => (
-                  <tr key={i} className="border-t border-gray-100">
+                  <tr key={i} className="border-t border-gray-200">
                     <td className="px-3 py-1.5 text-gray-500">{p.cod || '—'}</td>
                     <td className="px-3 py-1.5 text-gray-900">{p.nume}</td>
                     <td className="px-3 py-1.5 text-gray-500">{p.unitate || '—'}</td>
@@ -157,7 +157,7 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
                 ))}
                 {produse.length > 50 && (
                   <tr>
-                    <td colSpan={3} className="px-3 py-2 text-center text-gray-400 text-xs">
+                    <td colSpan={3} className="px-3 py-2 text-center text-gray-600 text-xs">
                       ... si inca {produse.length - 50} produse
                     </td>
                   </tr>

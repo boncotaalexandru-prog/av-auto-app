@@ -122,7 +122,7 @@ export default function SettingsForm() {
                 className="w-full h-full object-contain p-1"
               />
             ) : (
-              <span className="text-3xl text-gray-300">🖼</span>
+              <span className="text-3xl text-gray-600">🖼</span>
             )}
           </div>
           <div className="space-y-2">
@@ -134,7 +134,7 @@ export default function SettingsForm() {
             >
               {uploading ? 'Se incarca...' : 'Alege logo'}
             </button>
-            <p className="text-xs text-gray-400">PNG, JPG sau SVG. Recomandat: fundal transparent.</p>
+            <p className="text-xs text-gray-600">PNG, JPG sau SVG. Recomandat: fundal transparent.</p>
             <input
               ref={fileRef}
               type="file"

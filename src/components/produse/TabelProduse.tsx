@@ -101,7 +101,7 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
               </thead>
               <tbody>
                 {produse.map(p => (
-                  <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
+                  <tr key={p.id} className="border-t border-gray-200 hover:bg-gray-50">
                     <td className="px-4 py-2.5 text-gray-900">{p.nume}</td>
                     <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{p.cod || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-600">
@@ -114,7 +114,7 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                           placeholder="Producator"
                         />
                       ) : (
-                        p.producator || <span className="text-gray-300">—</span>
+                        p.producator || <span className="text-gray-600">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-gray-500">{p.unitate || '—'}</td>
@@ -129,7 +129,7 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                           step="0.01"
                         />
                       ) : (
-                        p.pret != null ? `${p.pret} RON` : <span className="text-gray-300">—</span>
+                        p.pret != null ? `${p.pret} RON` : <span className="text-gray-600">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
