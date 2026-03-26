@@ -94,7 +94,7 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
                           className="text-lg leading-none transition-transform hover:scale-110"
                           title={f.is_favorit ? 'Elimina din favorite' : 'Adauga la favorite'}
                         >
-                          <span className={f.is_favorit ? 'text-yellow-400' : 'text-gray-900'}>
+                          <span className={f.is_favorit ? 'text-amber-400' : 'text-gray-900'}>
                             {f.is_favorit ? '★' : '☆'}
                           </span>
                         </button>
