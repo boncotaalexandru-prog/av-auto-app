@@ -255,43 +255,47 @@ export default function ClientPage() {
         </div>
 
         {addingMasina && (
-          <div className="mb-4 p-3 border border-blue-200 rounded-lg bg-blue-50 flex gap-3 items-end">
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Nr. inmatriculare</p>
-              <input
-                type="text"
-                value={masinaNoua.nr_inmatriculare}
-                onChange={e => setMasinaNoua(m => ({ ...m, nr_inmatriculare: e.target.value.toUpperCase() }))}
-                className="px-2 py-1 border border-gray-300 rounded text-sm w-36"
-                placeholder="B 123 ABC"
-              />
+          <div className="mb-4 p-4 border border-blue-200 rounded-lg bg-blue-50 space-y-3">
+            <div className="flex gap-3">
+              <div>
+                <p className="text-xs font-medium text-gray-800 mb-1">Nr. inmatriculare</p>
+                <input
+                  type="text"
+                  value={masinaNoua.nr_inmatriculare}
+                  onChange={e => setMasinaNoua(m => ({ ...m, nr_inmatriculare: e.target.value.toUpperCase() }))}
+                  className="px-2 py-1.5 border border-gray-300 rounded text-sm w-36 text-gray-900"
+                  placeholder="B 123 ABC"
+                />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-800 mb-1">Marca / Model</p>
+                <input
+                  type="text"
+                  value={masinaNoua.marca}
+                  onChange={e => setMasinaNoua(m => ({ ...m, marca: e.target.value }))}
+                  className="px-2 py-1.5 border border-gray-300 rounded text-sm w-44 text-gray-900"
+                  placeholder="ex: Dacia Logan"
+                />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-medium text-gray-800 mb-1">Serie sasiu / VIN (optional)</p>
+                <input
+                  type="text"
+                  value={masinaNoua.vin}
+                  onChange={e => setMasinaNoua(m => ({ ...m, vin: e.target.value.toUpperCase() }))}
+                  className="px-2 py-1.5 border border-gray-300 rounded text-sm w-full font-mono text-gray-900"
+                  placeholder="ex: WDB9634031L..."
+                />
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Marca / Model</p>
-              <input
-                type="text"
-                value={masinaNoua.marca}
-                onChange={e => setMasinaNoua(m => ({ ...m, marca: e.target.value }))}
-                className="px-2 py-1 border border-gray-300 rounded text-sm w-40"
-                placeholder="ex: Dacia Logan"
-              />
+            <div className="flex gap-2">
+              <button onClick={addMasina} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+                Salveaza
+              </button>
+              <button onClick={() => setAddingMasina(false)} className="px-4 py-1.5 border border-gray-300 text-sm rounded text-gray-700 hover:bg-gray-50">
+                Anuleaza
+              </button>
             </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">VIN (optional)</p>
-              <input
-                type="text"
-                value={masinaNoua.vin}
-                onChange={e => setMasinaNoua(m => ({ ...m, vin: e.target.value.toUpperCase() }))}
-                className="px-2 py-1 border border-gray-300 rounded text-sm w-48 font-mono"
-                placeholder="VIN..."
-              />
-            </div>
-            <button onClick={addMasina} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-              Salveaza
-            </button>
-            <button onClick={() => setAddingMasina(false)} className="px-3 py-1.5 border border-gray-300 text-sm rounded text-gray-600 hover:bg-gray-50">
-              Anuleaza
-            </button>
           </div>
         )}
 
@@ -300,13 +304,25 @@ export default function ClientPage() {
         ) : (
           <div className="divide-y divide-gray-200">
             {masini.map(m => (
-              <div key={m.id} className="py-2.5 flex items-center gap-4">
-                <span className="font-mono text-sm font-semibold text-gray-900 w-32">{m.nr_inmatriculare || '—'}</span>
-                <span className="text-sm text-gray-600 flex-1">{m.marca || '—'}</span>
-                {m.vin && <span className="font-mono text-xs text-gray-600">{m.vin}</span>}
+              <div key={m.id} className="py-3 flex items-center gap-3">
+                <span className="font-mono text-sm font-bold text-gray-900 w-32 shrink-0">{m.nr_inmatriculare || '—'}</span>
+                <span className="text-sm text-gray-800 w-44 shrink-0">{m.marca || '—'}</span>
+                {m.vin && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs text-gray-800">{m.vin}</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(m.vin!)}
+                      className="text-xs text-blue-600 hover:text-blue-800 px-1.5 py-0.5 border border-blue-300 rounded hover:bg-blue-50 transition-colors"
+                      title="Copiaza VIN"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
+                <div className="flex-1" />
                 <button
                   onClick={() => deleteMasina(m.id)}
-                  className="text-xs text-red-600 hover:text-red-600"
+                  className="text-xs text-red-600 hover:text-red-800"
                 >
                   Sterge
                 </button>
