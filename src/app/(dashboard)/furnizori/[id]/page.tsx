@@ -19,10 +19,12 @@ interface Furnizor {
   email: string | null
   pers_contact: string | null
   telefon: string | null
-  ora_ridicare: string | null
-  are_contract: boolean
-  termen_plata: number | null
   observatii: string | null
+}
+
+interface OraRidicare {
+  id: string
+  ora: string
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -44,23 +46,26 @@ export default function FurnizorPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [furnizor, setFurnizor] = useState<Furnizor | null>(null)
+  const [ore, setOre] = useState<OraRidicare[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<Partial<Furnizor>>({})
+  const [oraNoua, setOraNoua] = useState('')
+  const [addingOra, setAddingOra] = useState(false)
 
   useEffect(() => {
     if (!id) return
-    createClient()
-      .from('furnizori')
-      .select('*')
-      .eq('id', id)
-      .single()
-      .then(({ data }) => {
-        setFurnizor(data)
-        setForm(data ?? {})
-        setLoading(false)
-      })
+    const supabase = createClient()
+    Promise.all([
+      supabase.from('furnizori').select('*').eq('id', id).single(),
+      supabase.from('furnizori_ore').select('id, ora').eq('furnizor_id', id).order('ora'),
+    ]).then(([{ data: f }, { data: o }]) => {
+      setFurnizor(f)
+      setForm(f ?? {})
+      setOre(o ?? [])
+      setLoading(false)
+    })
   }, [id])
 
   async function save() {
@@ -75,6 +80,23 @@ export default function FurnizorPage() {
     if (data) { setFurnizor(data); setForm(data) }
     setSaving(false)
     setEditMode(false)
+  }
+
+  async function addOra() {
+    if (!oraNoua) return
+    const { data } = await createClient()
+      .from('furnizori_ore')
+      .insert({ furnizor_id: id, ora: oraNoua })
+      .select()
+      .single()
+    if (data) setOre(prev => [...prev, data].sort((a, b) => a.ora.localeCompare(b.ora)))
+    setOraNoua('')
+    setAddingOra(false)
+  }
+
+  async function deleteOra(oraId: string) {
+    await createClient().from('furnizori_ore').delete().eq('id', oraId)
+    setOre(prev => prev.filter(o => o.id !== oraId))
   }
 
   if (loading) return <p className="text-sm text-gray-500 p-6">Se incarca...</p>
@@ -107,27 +129,72 @@ export default function FurnizorPage() {
         )}
       </div>
 
-      {/* Ora ridicare — card separat, proeminent */}
+      {/* Ore de ridicare */}
       <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
-        <h3 className="font-semibold text-gray-900 mb-3">Ora de ridicare</h3>
-        <div className="flex items-center gap-4">
-          {editMode ? (
-            <input
-              type="time"
-              value={form.ora_ridicare ?? ''}
-              onChange={e => setForm(f => ({ ...f, ora_ridicare: e.target.value || null }))}
-              className="px-3 py-2 border border-blue-400 rounded-lg text-lg font-semibold text-gray-900 w-36"
-            />
-          ) : furnizor.ora_ridicare ? (
-            <span className="text-3xl font-bold text-blue-700">
-              {furnizor.ora_ridicare.slice(0, 5)}
-            </span>
-          ) : (
-            <span className="text-gray-400 text-sm italic">Ora neselectata — apasa Editeaza pentru a seta</span>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900">Ore de ridicare</h3>
+          <button
+            onClick={() => setAddingOra(true)}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            + Adauga ora
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {/* Stoc CT — fix, needitabil */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-lg">
+            <span className="text-sm font-semibold text-orange-700">Stoc CT</span>
+            <span className="text-xs text-orange-400 ml-1">presetat</span>
+          </div>
+
+          {/* Orele configurate */}
+          {ore.map(o => (
+            <div key={o.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
+              <span className="text-sm font-semibold text-blue-800">{o.ora.slice(0, 5)}</span>
+              <button
+                onClick={() => deleteOra(o.id)}
+                className="text-blue-300 hover:text-red-500 transition-colors ml-1 text-xs leading-none"
+                title="Sterge ora"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          {ore.length === 0 && !addingOra && (
+            <span className="text-sm text-gray-400 italic">Nicio ora configurata</span>
+          )}
+
+          {/* Input ora noua */}
+          {addingOra && (
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                value={oraNoua}
+                onChange={e => setOraNoua(e.target.value)}
+                className="px-2 py-1 border border-blue-400 rounded text-sm font-semibold text-gray-900 w-32"
+                autoFocus
+              />
+              <button
+                onClick={addOra}
+                disabled={!oraNoua}
+                className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-40"
+              >
+                Adauga
+              </button>
+              <button
+                onClick={() => { setAddingOra(false); setOraNoua('') }}
+                className="px-3 py-1 border border-gray-300 text-xs rounded text-gray-600 hover:bg-gray-50"
+              >
+                Anuleaza
+              </button>
+            </div>
           )}
         </div>
-        <p className="text-xs text-gray-400 mt-2">
-          Aceasta ora apare in lista de ridicari si poate fi modificata per ridicare.
+
+        <p className="text-xs text-gray-400 mt-3">
+          La o ridicare poti alege una din orele de mai sus sau Stoc CT.
         </p>
       </div>
 
@@ -155,62 +222,21 @@ export default function FurnizorPage() {
         </div>
       </div>
 
-      {/* Date comerciale */}
+      {/* Observatii */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h3 className="font-semibold text-gray-900 mb-4">Date comerciale</h3>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Contract</p>
-            {editMode ? (
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!form.are_contract}
-                  onChange={e => setForm(f => ({ ...f, are_contract: e.target.checked }))}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600"
-                />
-                <span className="text-sm text-gray-700">Are contract</span>
-              </label>
-            ) : (
-              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                furnizor.are_contract ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-              }`}>
-                {furnizor.are_contract ? 'Da — contract activ' : 'Nu'}
-              </span>
-            )}
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Termen plata (zile)</p>
-            {editMode ? (
-              <input
-                type="number"
-                value={form.termen_plata ?? ''}
-                onChange={e => setForm(f => ({ ...f, termen_plata: e.target.value ? parseInt(e.target.value) : null }))}
-                className="w-32 px-2 py-1 border border-blue-400 rounded text-sm text-gray-900"
-                placeholder="ex: 30"
-              />
-            ) : (
-              <p className="text-sm text-gray-900">
-                {furnizor.termen_plata ? `${furnizor.termen_plata} zile` : <span className="text-gray-400">—</span>}
-              </p>
-            )}
-          </div>
-          <div className="col-span-2">
-            <p className="text-xs text-gray-500 mb-1">Observatii</p>
-            {editMode ? (
-              <textarea
-                value={form.observatii ?? ''}
-                onChange={e => setForm(f => ({ ...f, observatii: e.target.value || null }))}
-                rows={3}
-                className="w-full px-2 py-1 border border-blue-400 rounded text-sm text-gray-900 resize-none"
-              />
-            ) : (
-              <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                {furnizor.observatii || <span className="text-gray-400">—</span>}
-              </p>
-            )}
-          </div>
-        </div>
+        <h3 className="font-semibold text-gray-900 mb-3">Observatii</h3>
+        {editMode ? (
+          <textarea
+            value={form.observatii ?? ''}
+            onChange={e => setForm(f => ({ ...f, observatii: e.target.value || null }))}
+            rows={4}
+            className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm text-gray-900 resize-none"
+          />
+        ) : (
+          <p className="text-sm text-gray-900 whitespace-pre-wrap">
+            {furnizor.observatii || <span className="text-gray-400">—</span>}
+          </p>
+        )}
       </div>
     </div>
   )

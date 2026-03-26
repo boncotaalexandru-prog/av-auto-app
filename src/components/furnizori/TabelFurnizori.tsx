@@ -10,8 +10,7 @@ interface Furnizor {
   cod_fiscal: string | null
   localitate: string | null
   telefon: string | null
-  ora_ridicare: string | null
-  is_stoc_ct: boolean
+  furnizori_ore: { ora: string }[]
 }
 
 export default function TabelFurnizori({ refresh }: { refresh: number }) {
@@ -30,8 +29,7 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
 
     let query = supabase
       .from('furnizori')
-      .select('id, denumire, cod_fiscal, localitate, telefon, ora_ridicare, is_stoc_ct')
-      .order('is_stoc_ct', { ascending: false }) // Stoc CT primul
+      .select('id, denumire, cod_fiscal, localitate, telefon, furnizori_ore(ora)')
       .order('denumire')
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
@@ -40,7 +38,7 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
     }
 
     query.then(({ data }) => {
-      setFurnizori(data ?? [])
+      setFurnizori((data as Furnizor[]) ?? [])
       setLoading(false)
     })
   }, [page, search, refresh])
@@ -73,44 +71,40 @@ export default function TabelFurnizori({ refresh }: { refresh: number }) {
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Cod fiscal</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Localitate</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Telefon</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Ora ridicare</th>
+                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Ore ridicare</th>
                 </tr>
               </thead>
               <tbody>
-                {furnizori.map(f => (
-                  <tr key={f.id} className="border-t border-gray-100">
-                    <td className="px-4 py-2.5">
-                      {f.is_stoc_ct ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
-                            Stoc CT
-                          </span>
-                        </span>
-                      ) : (
+                {furnizori.map(f => {
+                  const ore = [...(f.furnizori_ore ?? [])].sort((a, b) => a.ora.localeCompare(b.ora))
+                  return (
+                    <tr key={f.id} className="border-t border-gray-100">
+                      <td className="px-4 py-2.5">
                         <button
                           onClick={() => router.push(`/furnizori/${f.id}`)}
                           className="font-medium text-gray-900 hover:text-blue-600 hover:underline underline-offset-2 active:text-blue-800 transition-colors text-left cursor-pointer"
                         >
                           {f.denumire}
                         </button>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{f.cod_fiscal || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{f.localitate || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{f.telefon || '—'}</td>
-                    <td className="px-4 py-2.5">
-                      {f.is_stoc_ct ? (
-                        <span className="text-xs text-gray-400 italic">fara ora</span>
-                      ) : f.ora_ridicare ? (
-                        <span className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900">
-                          🕐 {f.ora_ridicare.slice(0, 5)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{f.cod_fiscal || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{f.localitate || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-500">{f.telefon || '—'}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          <span className="px-2 py-0.5 bg-orange-50 border border-orange-200 rounded text-xs font-medium text-orange-700">
+                            Stoc CT
+                          </span>
+                          {ore.map((o, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-blue-50 border border-blue-200 rounded text-xs font-semibold text-blue-800">
+                              {o.ora.slice(0, 5)}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
