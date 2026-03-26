@@ -124,9 +124,10 @@ export default function FurnizorPage() {
           className="text-2xl leading-none transition-transform hover:scale-110"
           title={favorit ? 'Elimina din favorite' : 'Adauga la favorite'}
         >
-          <span className={favorit ? 'text-amber-400' : 'text-gray-900'}>
-            {favorit ? '★' : '☆'}
-          </span>
+          {favorit
+            ? <span style={{ color: '#F59E0B', fontSize: '1.5rem' }}>★</span>
+            : <span style={{ color: '#111827', fontSize: '1.5rem' }}>☆</span>
+          }
         </button>
         {!editMode ? (
           <button onClick={() => setEditMode(true)}
