@@ -16,7 +16,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: '⊞' },
   { label: 'Produse', href: '/produse', icon: '📦' },
   { label: 'Furnizori', href: '/furnizori', icon: '🏭' },
-  { label: 'Comenzi', href: '/comenzi', icon: '📋' },
+  { label: 'Oferte', href: '/oferte', icon: '📋' },
   { label: 'Marfa de ridicat', href: '/marfa-de-ridicat', icon: '🚛' },
   { label: 'Clienti', href: '/clienti', icon: '👥' },
   { label: 'Rapoarte', href: '/rapoarte', icon: '📊', adminOnly: true },
