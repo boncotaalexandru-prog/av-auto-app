@@ -808,7 +808,7 @@ export default function OfertaPage() {
       {/* Modal adauga produs */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[95vh] overflow-y-auto">
             {/* Header modal */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
               <h3 className="text-lg font-bold text-gray-900">Adauga Produs</h3>
