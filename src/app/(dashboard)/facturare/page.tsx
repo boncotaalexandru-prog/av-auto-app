@@ -36,6 +36,25 @@ interface FacturaItem {
   nr_produse: number
 }
 
+interface StornoLinie {
+  _key: string
+  factura_id: string
+  factura_numar: number
+  factura_data: string
+  linie_id: string
+  produs_id: string | null
+  stoc_id: string | null
+  nume_produs: string
+  cod: string | null
+  producator: string | null
+  unitate: string
+  cantitate_maxima: number
+  cantitate: number
+  pret_achizitie: number
+  pret_vanzare: number
+  selectat: boolean
+}
+
 function stripDiacritice(s: string) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
@@ -54,6 +73,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   emisa:        { label: 'Emisă',        color: 'bg-blue-100 text-blue-800' },
   platita:      { label: 'Plătită',      color: 'bg-green-100 text-green-800' },
   anulata:      { label: 'Anulată',      color: 'bg-red-100 text-red-800' },
+  stornata:     { label: 'Stornată',     color: 'bg-purple-100 text-purple-800' },
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -61,11 +81,23 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 function FacturarePageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [view, setView] = useState<'lista' | 'nou'>('lista')
+  const [view, setView] = useState<'lista' | 'nou' | 'storno'>('lista')
 
   // ─── Lista facturi ────────────────────────────────────────────────────────
   const [facturi, setFacturi] = useState<FacturaItem[]>([])
   const [loading, setLoading] = useState(true)
+
+  // ─── Storno state ─────────────────────────────────────────────────────────
+  const [stornoClientSearch, setStornoClientSearch] = useState('')
+  const [stornoClientResults, setStornoClientResults] = useState<ClientOpt[]>([])
+  const [stornoClientId, setStornoClientId] = useState<string | null>(null)
+  const [showStornoClientList, setShowStornoClientList] = useState(false)
+  const stornoClientRef = useRef<HTMLDivElement>(null)
+  const [stornoDataEmitere, setStornoDataEmitere] = useState(new Date().toISOString().slice(0, 10))
+  const [stornoObservatii, setStornoObservatii] = useState('')
+  const [stornoLinii, setStornoLinii] = useState<StornoLinie[]>([])
+  const [stornoLoading, setStornoLoading] = useState(false)
+  const [stornoSalvand, setStornoSalvand] = useState(false)
 
   useEffect(() => {
     if (view === 'lista') loadFacturi()
@@ -115,7 +147,8 @@ function FacturarePageInner() {
   const [showClientList, setShowClientList] = useState(false)
   const clientRef = useRef<HTMLDivElement>(null)
   const [dataEmitere, setDataEmitere] = useState(new Date().toISOString().slice(0, 10))
-  const [termenPlata, setTermenPlata] = useState<number>(0)
+  const [termenPlata, setTermenPlata] = useState<number>(1)
+  const [observatii, setObservatii] = useState('')
 
   const [randuri, setRanduri] = useState<RandFactura[]>([])
   const [modal, setModal] = useState(false)
@@ -138,6 +171,7 @@ function FacturarePageInner() {
     setEditIdx(null); setSalvand(false)
     setDataEmitere(new Date().toISOString().slice(0, 10))
     setTermenPlata(0)
+    setObservatii('')
     setView('nou')
   }
 
@@ -161,7 +195,7 @@ function FacturarePageInner() {
       setClientId(oferta.client_id)
       setClientSearch(client?.denumire ?? '')
       const { data: cl } = await supabase.from('clienti').select('termen_plata').eq('id', oferta.client_id).single()
-      setTermenPlata(cl?.termen_plata ?? 0)
+      setTermenPlata(cl?.termen_plata ?? 1)
 
       // Incarca produsele ofertei
       const { data: opRows } = await supabase
@@ -312,19 +346,27 @@ function FacturarePageInner() {
       .gt('cantitate', 0).or(orParts.join(','))
       .order('updated_at', { ascending: true })
 
-    // Ultima ofertare
-    const ofProdQuery = supabase.from('oferte_produse')
-      .select('pret_vanzare, oferta_id').order('created_at', { ascending: false }).limit(20)
-    const { data: opRows } = p.cod ? await ofProdQuery.eq('cod', p.cod) : await ofProdQuery.eq('produs_id', p.id)
-    if (opRows && opRows.length > 0) {
-      const ofertaIds = [...new Set(opRows.map(r => r.oferta_id))]
-      const { data: oferteRows } = await supabase.from('oferte')
-        .select('id, numar, created_at').in('id', ofertaIds)
-        .neq('status', 'anulata').order('created_at', { ascending: false }).limit(1)
-      if (oferteRows?.length) {
-        const o = oferteRows[0]
-        const prod = opRows.find(r => r.oferta_id === o.id)
-        setUltimaOfertare({ pret: prod?.pret_vanzare ?? 0, data: new Date(o.created_at).toLocaleDateString('ro-RO'), numar: o.numar })
+    // Ultima ofertare — doar pentru clientul curent
+    if (clientId) {
+      const { data: oferteClient } = await supabase.from('oferte')
+        .select('id, numar, created_at')
+        .eq('client_id', clientId)
+        .neq('status', 'anulata')
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (oferteClient?.length) {
+        const ofertaIds = oferteClient.map(o => o.id)
+        const ofProdQuery = supabase.from('oferte_produse')
+          .select('pret_vanzare, oferta_id')
+          .in('oferta_id', ofertaIds)
+          .order('created_at', { ascending: false })
+          .limit(20)
+        const { data: opRows } = p.cod ? await ofProdQuery.eq('cod', p.cod) : await ofProdQuery.eq('produs_id', p.id)
+        if (opRows?.length) {
+          const o = oferteClient.find(oc => oc.id === opRows[0].oferta_id)
+          if (o) setUltimaOfertare({ pret: opRows[0].pret_vanzare ?? 0, data: new Date(o.created_at).toLocaleDateString('ro-RO'), numar: o.numar })
+        }
       }
     }
 
@@ -401,6 +443,7 @@ function FacturarePageInner() {
       data_emitere: dataEmitere,
       termen_plata: termenPlata || null,
       data_scadenta: scadenta,
+      observatii: observatii.trim() || null,
       status: 'nefinalizata',
       created_by: user?.id ?? null,
     }).select('id, numar').single()
@@ -490,6 +533,148 @@ function FacturarePageInner() {
     loadFacturi()
   }
 
+  // ─── Storno functions ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!stornoClientSearch.trim()) { setStornoClientResults([]); return }
+    const t = setTimeout(async () => {
+      const { data } = await createClient().from('clienti').select('id, denumire')
+        .ilike('denumire', `%${stornoClientSearch}%`).limit(8)
+      setStornoClientResults(data ?? [])
+    }, 200)
+    return () => clearTimeout(t)
+  }, [stornoClientSearch])
+
+  async function loadStornoLinii(clientId: string) {
+    setStornoLoading(true)
+    setStornoLinii([])
+    const supabase = createClient()
+
+    // 1. Facturi normale emise/platite ale clientului
+    const { data: fRows } = await supabase
+      .from('facturi')
+      .select('id, numar, data_emitere')
+      .eq('client_id', clientId)
+      .in('status', ['emisa', 'platita'])
+      .eq('tip', 'normala')
+      .order('numar', { ascending: false })
+
+    if (!fRows?.length) { setStornoLoading(false); return }
+
+    const normalIds = fRows.map(f => f.id)
+
+    // 2. Liniile produselor facturate
+    const { data: produse } = await supabase
+      .from('facturi_produse')
+      .select('id, factura_id, stoc_id, produs_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
+      .in('factura_id', normalIds)
+      .gt('cantitate', 0)
+
+    if (!produse?.length) { setStornoLoading(false); return }
+
+    // 3. Calculeaza cantitatea deja stornata per linie EXACT via referinta_linie_id
+    const linieIds = produse.map(p => p.id)
+    const { data: stornoLinii } = await supabase
+      .from('facturi_produse')
+      .select('referinta_linie_id, cantitate')
+      .in('referinta_linie_id', linieIds)
+      .lt('cantitate', 0)
+
+    const stornateMap: Record<string, number> = {}
+    for (const sl of stornoLinii ?? []) {
+      if (sl.referinta_linie_id) {
+        stornateMap[sl.referinta_linie_id] = (stornateMap[sl.referinta_linie_id] ?? 0) + Math.abs(sl.cantitate)
+      }
+    }
+
+    // 4. Filtreaza liniile deja integral stornate, arata doar cantitatea ramasa
+    const linii: StornoLinie[] = []
+    for (const p of produse) {
+      const f = fRows.find(f => f.id === p.factura_id)!
+      const dejaStornat = stornateMap[p.id] ?? 0
+      const disponibil = p.cantitate - dejaStornat
+
+      if (disponibil <= 0) continue
+
+      linii.push({
+        _key: p.id,
+        factura_id: p.factura_id,
+        factura_numar: f.numar,
+        factura_data: f.data_emitere,
+        linie_id: p.id,
+        produs_id: (p as { produs_id?: string | null }).produs_id ?? null,
+        stoc_id: p.stoc_id,
+        nume_produs: p.nume_produs ?? '',
+        cod: p.cod,
+        producator: p.producator,
+        unitate: p.unitate ?? 'buc',
+        cantitate_maxima: disponibil,
+        cantitate: disponibil,
+        pret_achizitie: p.pret_achizitie ?? 0,
+        pret_vanzare: p.pret_vanzare ?? 0,
+        selectat: false,
+      })
+    }
+
+    setStornoLinii(linii)
+    setStornoLoading(false)
+  }
+
+  async function emiteStorno() {
+    const selectate = stornoLinii.filter(l => l.selectat && l.cantitate > 0)
+    if (!selectate.length || !stornoClientId) return
+    if (!confirm(`Emiți o factură storno cu ${selectate.length} produs(e)? Stocul va fi restituit.`)) return
+
+    setStornoSalvand(true)
+    const supabase = createClient()
+
+    const { data: storno, error } = await supabase.from('facturi').insert({
+      client_id: stornoClientId,
+      data_emitere: stornoDataEmitere,
+      status: 'emisa',
+      tip: 'storno',
+      observatii: stornoObservatii.trim() || null,
+    }).select('id').single()
+
+    if (error || !storno) {
+      alert('Eroare la creare storno: ' + error?.message)
+      setStornoSalvand(false)
+      return
+    }
+
+    await supabase.from('facturi_produse').insert(
+      selectate.map(l => ({
+        factura_id: storno.id,
+        referinta_linie_id: l.linie_id,
+        produs_id: l.produs_id,
+        stoc_id: l.stoc_id,
+        nume_produs: l.nume_produs,
+        cod: l.cod,
+        producator: l.producator,
+        unitate: l.unitate,
+        cantitate: -l.cantitate,
+        pret_achizitie: l.pret_achizitie,
+        pret_vanzare: l.pret_vanzare,
+      }))
+    )
+
+    for (const l of selectate) {
+      if (l.stoc_id) {
+        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', l.stoc_id).single()
+        if (s) await supabase.from('stoc').update({ cantitate: s.cantitate + l.cantitate }).eq('id', l.stoc_id)
+        continue
+      }
+      if (!l.cod) continue
+      const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
+        .eq('produs_cod', l.cod).order('updated_at', { ascending: true }).limit(1)
+      if (intrari?.length) {
+        await supabase.from('stoc').update({ cantitate: intrari[0].cantitate + l.cantitate }).eq('id', intrari[0].id)
+      }
+    }
+
+    router.push(`/facturare/${storno.id}`)
+  }
+
   const total = randuri.reduce((s, r) => s + r.cantitate * r.pret_vanzare, 0)
   const totalAch = randuri.reduce((s, r) => s + r.cantitate * r.pret_achizitie, 0)
   const adaos = totalAch > 0 ? ((total - totalAch) / totalAch) * 100 : null
@@ -518,11 +703,17 @@ function FacturarePageInner() {
             <h2 className="text-2xl font-bold text-gray-900">Facturi</h2>
             <p className="text-sm text-gray-600 mt-0.5">Facturi emise către clienți</p>
           </div>
-          <button onClick={resetNou}
-            className="px-5 py-2.5 text-white font-bold rounded-xl text-sm shadow-sm"
-            style={{ backgroundColor: '#0f172a' }}>
-            + Factură nouă
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => { setStornoClientSearch(''); setStornoClientId(null); setStornoLinii([]); setStornoObservatii(''); setStornoDataEmitere(new Date().toISOString().slice(0, 10)); setView('storno') }}
+              className="px-5 py-2.5 font-bold rounded-xl text-sm shadow-sm border border-purple-300 text-purple-800 bg-purple-50 hover:bg-purple-100">
+              ↩ Factură storno
+            </button>
+            <button onClick={resetNou}
+              className="px-5 py-2.5 text-white font-bold rounded-xl text-sm shadow-sm"
+              style={{ backgroundColor: '#0f172a' }}>
+              + Factură nouă
+            </button>
+          </div>
         </div>
 
         {/* Filtre */}
@@ -536,6 +727,7 @@ function FacturarePageInner() {
               <option value="emisa">Emisă</option>
               <option value="platita">Plătită</option>
               <option value="anulata">Anulată</option>
+              <option value="stornata">Stornată</option>
             </select>
           </div>
           <div>
@@ -643,6 +835,203 @@ function FacturarePageInner() {
     )
   }
 
+  // ─── RENDER STORNO ────────────────────────────────────────────────────────
+
+  if (view === 'storno') {
+    const stornoSelectate = stornoLinii.filter(l => l.selectat && l.cantitate > 0)
+    const stornoTotal = stornoSelectate.reduce((s, l) => s + l.cantitate * l.pret_vanzare, 0)
+
+    // Group lines by invoice
+    const grupuriFacturi = stornoLinii.reduce<Record<string, StornoLinie[]>>((acc, l) => {
+      if (!acc[l.factura_id]) acc[l.factura_id] = []
+      acc[l.factura_id].push(l)
+      return acc
+    }, {})
+
+    return (
+      <div className="space-y-6 max-w-5xl pb-32">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setView('lista')} className="text-sm text-gray-700 hover:text-gray-900 font-medium">
+            ← Înapoi la facturi
+          </button>
+          <span className="text-gray-300">|</span>
+          <h2 className="text-2xl font-bold text-gray-900">Factură storno</h2>
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800">STORNO</span>
+        </div>
+
+        {/* Client + data */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="md:col-span-1">
+              <label className="block text-sm font-semibold text-gray-900 mb-2">Client</label>
+              <div ref={stornoClientRef} className="relative">
+                <input type="text" value={stornoClientSearch}
+                  onChange={e => { setStornoClientSearch(e.target.value); setShowStornoClientList(true); setStornoClientId(null); setStornoLinii([]) }}
+                  onFocus={() => setShowStornoClientList(true)}
+                  placeholder="Caută client..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                {showStornoClientList && stornoClientResults.length > 0 && (
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {stornoClientResults.map(c => (
+                      <button key={c.id} onClick={() => {
+                        setStornoClientId(c.id)
+                        setStornoClientSearch(c.denumire)
+                        setShowStornoClientList(false)
+                        loadStornoLinii(c.id)
+                      }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-900 hover:bg-purple-50 border-b border-gray-100 last:border-0">
+                        {c.denumire}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {stornoClientId && <p className="mt-1.5 text-xs text-green-700 font-medium">✓ Client selectat</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">Data emiterii</label>
+              <input type="date" value={stornoDataEmitere} onChange={e => setStornoDataEmitere(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">Observații</label>
+              <input type="text" value={stornoObservatii} onChange={e => setStornoObservatii(e.target.value)}
+                placeholder="ex: Storno parțial factură..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Produse facturate */}
+        {stornoClientId && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Produse facturate clientului
+                {stornoLinii.length > 0 && <span className="ml-2 text-gray-500 font-normal">({stornoLinii.length} linii)</span>}
+              </h3>
+              {stornoLinii.length > 0 && (
+                <div className="flex gap-2">
+                  <button onClick={() => setStornoLinii(prev => prev.map(l => ({ ...l, selectat: true })))}
+                    className="text-xs text-purple-700 font-semibold px-3 py-1.5 border border-purple-200 rounded-lg hover:bg-purple-50">
+                    Selectează tot
+                  </button>
+                  <button onClick={() => setStornoLinii(prev => prev.map(l => ({ ...l, selectat: false })))}
+                    className="text-xs text-gray-600 font-semibold px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">
+                    Deselectează tot
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {stornoLoading ? (
+              <div className="px-5 py-10 text-center text-sm text-gray-600">Se încarcă...</div>
+            ) : stornoLinii.length === 0 ? (
+              <div className="px-5 py-12 text-center">
+                <p className="text-3xl mb-2">📭</p>
+                <p className="text-sm text-gray-600">Nicio factură emisă sau plătită pentru acest client.</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-2.5 w-8"></th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-700">Factură</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-700">Produs</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Cant. facturată</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Cant. storno</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Preț vânz.</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.values(grupuriFacturi).map(liniiFactura => {
+                    const primalinie = liniiFactura[0]
+                    return liniiFactura.map((l, li) => (
+                      <tr key={l._key} className={`border-t border-gray-100 ${l.selectat ? 'bg-purple-50' : 'hover:bg-gray-50'}`}>
+                        <td className="px-4 py-2.5 text-center">
+                          <input type="checkbox" checked={l.selectat}
+                            onChange={e => setStornoLinii(prev => prev.map(x => x._key === l._key ? { ...x, selectat: e.target.checked } : x))}
+                            className="w-4 h-4 accent-purple-600 cursor-pointer"
+                          />
+                        </td>
+                        {li === 0 ? (
+                          <td className="px-4 py-2.5" rowSpan={liniiFactura.length}>
+                            <span className="font-mono font-bold text-gray-900">#{primalinie.factura_numar}</span>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {new Date(primalinie.factura_data).toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </p>
+                          </td>
+                        ) : null}
+                        <td className="px-4 py-2.5">
+                          <p className="font-medium text-gray-900">{l.nume_produs}</p>
+                          <div className="flex gap-2 mt-0.5">
+                            {l.cod && <span className="text-xs text-gray-500 font-mono">{l.cod}</span>}
+                            {l.producator && <span className="text-xs text-gray-500">{l.producator}</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-600">{l.cantitate_maxima} {l.unitate}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          <input type="number" min={0.01} max={l.cantitate_maxima} step={1}
+                            value={l.cantitate}
+                            onChange={e => {
+                              const v = Math.min(parseFloat(e.target.value) || 0, l.cantitate_maxima)
+                              setStornoLinii(prev => prev.map(x => x._key === l._key ? { ...x, cantitate: v } : x))
+                            }}
+                            disabled={!l.selectat}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right text-gray-900 disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-900">{l.pret_vanzare.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-gray-900">
+                          {l.selectat ? (l.cantitate * l.pret_vanzare).toFixed(2) : <span className="text-gray-400">—</span>}
+                        </td>
+                      </tr>
+                    ))
+                  })}
+                </tbody>
+                {stornoSelectate.length > 0 && (
+                  <tfoot className="border-t-2 border-gray-200 bg-purple-50">
+                    <tr>
+                      <td colSpan={6} className="px-4 py-2 text-right text-xs text-gray-600">Total storno fără TVA:</td>
+                      <td className="px-4 py-2 text-right font-semibold text-purple-800">-{stornoTotal.toFixed(2)} RON</td>
+                    </tr>
+                    <tr>
+                      <td colSpan={6} className="px-4 py-2 text-right text-xs text-gray-600">Total storno cu TVA 21%:</td>
+                      <td className="px-4 py-2 text-right font-bold text-purple-900">-{(stornoTotal * 1.21).toFixed(2)} RON</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            )}
+          </div>
+        )}
+
+        {/* Bara jos */}
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t-2 border-gray-200 px-6 py-4 flex items-center justify-between shadow-lg">
+          <button onClick={() => setView('lista')} className="text-sm font-medium text-gray-700 hover:text-gray-900">← Înapoi</button>
+          <div className="flex items-center gap-4">
+            {stornoSelectate.length > 0 && (
+              <span className="text-sm text-gray-600">
+                {stornoSelectate.length} produs(e) selectat(e) · <strong className="text-purple-800">-{stornoTotal.toFixed(2)} RON</strong>
+              </span>
+            )}
+            <button onClick={emiteStorno} disabled={stornoSalvand || stornoSelectate.length === 0}
+              className="px-8 py-2.5 font-bold rounded-lg disabled:opacity-40 text-sm text-white"
+              style={{ backgroundColor: '#7c3aed' }}>
+              {stornoSalvand ? 'Se procesează...' : '↩ Emite factură storno'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // ─── RENDER CREARE FACTURA ────────────────────────────────────────────────
 
   return (
@@ -674,7 +1063,7 @@ function FacturarePageInner() {
                     <button key={c.id} onClick={async () => {
                       setClientId(c.id); setClientSearch(c.denumire); setShowClientList(false)
                       const { data: cl } = await createClient().from('clienti').select('termen_plata').eq('id', c.id).single()
-                      setTermenPlata(cl?.termen_plata ?? 0)
+                      setTermenPlata(cl?.termen_plata ?? 1)
                     }}
                       className="w-full text-left px-3 py-2 text-sm text-gray-900 hover:bg-blue-50 border-b border-gray-100 last:border-0">
                       {c.denumire}
@@ -697,9 +1086,9 @@ function FacturarePageInner() {
           {/* Termen plata */}
           <div>
             <label className="block text-sm font-semibold text-gray-900 mb-2">Termen plată (zile)</label>
-            <input type="number" min={0} value={termenPlata} onChange={e => setTermenPlata(Number(e.target.value))}
+            <input type="number" min={1} value={termenPlata} onChange={e => setTermenPlata(Number(e.target.value))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="0"
+              placeholder="1"
             />
             {termenPlata > 0 && (
               <p className="mt-1 text-xs text-gray-500">
@@ -708,6 +1097,18 @@ function FacturarePageInner() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Observatii */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <label className="block text-sm font-semibold text-gray-900 mb-2">Observații (apar pe factură)</label>
+        <textarea
+          value={observatii}
+          onChange={e => setObservatii(e.target.value)}
+          rows={3}
+          placeholder="ex: Conform comanda nr. 123, livrare la depozit..."
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none placeholder:text-gray-400"
+        />
       </div>
 
       {/* Produse */}

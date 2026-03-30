@@ -53,6 +53,19 @@ interface ProfitRand {
   profit: number
 }
 
+interface FacProdRich {
+  produs: string
+  cantitate: number
+  pret_vanzare: number
+  pret_achizitie: number
+  vanzari_nete: number
+  cost_achizitie: number
+  profit: number
+  data_emitere: string
+  client_denumire: string
+  factura_tip: string
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -89,6 +102,7 @@ export default function RapoartePage() {
   const [stoc, setStoc] = useState<StocItem[]>([])
   const [nir, setNir] = useState<NirRow[]>([])
   const [facturiProduse, setFacturiProduse] = useState<(ProfitRand & { data_emitere: string })[]>([])
+  const [facturiProduseRich, setFacturiProduseRich] = useState<FacProdRich[]>([])
 
   // Filtru perioadă
   const [perioada, setPerioada] = useState<'30' | '90' | '365' | 'toate'>('30')
@@ -113,7 +127,7 @@ export default function RapoartePage() {
         supabase.from('profiles').select('id, full_name, email'),
         supabase.from('stoc').select('produs_nume, produs_cod, cantitate, pret_achizitie, pret_lista, furnizor_nume').order('produs_nume'),
         supabase.from('nir').select('id, numar, data_intrare, furnizor_nume, total_fara_tva, total_cu_tva').order('data_intrare', { ascending: false }).limit(200),
-        supabase.from('facturi').select('id, data_emitere').order('data_emitere', { ascending: false }).limit(1000),
+        supabase.from('facturi').select('id, data_emitere, client_id, tip').order('data_emitere', { ascending: false }).limit(1000),
         supabase.from('facturi_produse').select('factura_id, nume_produs, cantitate, pret_vanzare, pret_achizitie').limit(10000),
       ])
 
@@ -147,25 +161,50 @@ export default function RapoartePage() {
         client_denumire: ofertaStatusMap[p.oferta_id]?.client,
       }))
 
-      // Mapă factura_id → data_emitere
-      const facturaDateMap: Record<string, string> = {}
-      ;(fRaw.data ?? []).forEach((f: { id: string; data_emitere: string }) => { facturaDateMap[f.id] = f.data_emitere })
+      // Mapă factura_id → { data_emitere, client_id, tip }
+      const facturaMap: Record<string, { data_emitere: string; client_id: string | null; tip: string }> = {}
+      ;(fRaw.data ?? []).forEach((f: { id: string; data_emitere: string; client_id: string | null; tip: string }) => {
+        facturaMap[f.id] = { data_emitere: f.data_emitere, client_id: f.client_id, tip: f.tip ?? 'normala' }
+      })
 
-      // Construim randuri pentru profit pe produs
+      // Construim randuri pentru profit pe produs (toate liniile)
       const fpJoined = (fpRaw.data ?? []).map((p: { factura_id: string; nume_produs: string; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => ({
         produs: p.nume_produs ?? '',
         cantitate: p.cantitate ?? 1,
         vanzari_nete: (p.cantitate ?? 1) * (p.pret_vanzare ?? 0),
         cost_achizitie: (p.cantitate ?? 1) * (p.pret_achizitie ?? 0),
         profit: (p.cantitate ?? 1) * ((p.pret_vanzare ?? 0) - (p.pret_achizitie ?? 0)),
-        data_emitere: facturaDateMap[p.factura_id] ?? '',
+        data_emitere: facturaMap[p.factura_id]?.data_emitere ?? '',
       }))
+
+      // Randuri îmbogățite cu client și tip (pentru vânzări)
+      const fpRich: FacProdRich[] = (fpRaw.data ?? [])
+        .filter((p: { cantitate: number }) => (p.cantitate ?? 0) > 0)  // exclude storno (cantitate negativa)
+        .map((p: { factura_id: string; nume_produs: string; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => {
+          const f = facturaMap[p.factura_id]
+          const cant = p.cantitate ?? 1
+          const pv = p.pret_vanzare ?? 0
+          const pa = p.pret_achizitie ?? 0
+          return {
+            produs: p.nume_produs ?? '',
+            cantitate: cant,
+            pret_vanzare: pv,
+            pret_achizitie: pa,
+            vanzari_nete: cant * pv,
+            cost_achizitie: cant * pa,
+            profit: cant * (pv - pa),
+            data_emitere: f?.data_emitere ?? '',
+            client_denumire: f?.client_id ? (clientMap[f.client_id] ?? '(fără client)') : '(fără client)',
+            factura_tip: f?.tip ?? 'normala',
+          }
+        })
 
       setOferte(oferteJoined)
       setProduse(produseJoined)
       setStoc((sRaw.data ?? []) as StocItem[])
       setNir((nRaw.data ?? []) as NirRow[])
       setFacturiProduse(fpJoined)
+      setFacturiProduseRich(fpRich)
       setLoading(false)
     }
     load()
@@ -183,19 +222,26 @@ export default function RapoartePage() {
     cutoff ? oferte.filter(o => o.created_at >= cutoff) : oferte
   , [oferte, cutoff])
 
+  // ── Tab: Vânzări — date din facturi reale ────────────────────────────────
+
+  const facturiProduseFiltered = useMemo(() => {
+    if (!cutoff) return facturiProduseRich
+    const cutoffDate = cutoff.slice(0, 10)
+    return facturiProduseRich.filter(p => p.data_emitere >= cutoffDate)
+  }, [facturiProduseRich, cutoff])
+
   // ── KPI Cards ────────────────────────────────────────────────────────────
 
   const kpi = useMemo(() => {
     const active = oferteFiltered.filter(o => !['draft', 'anulata'].includes(o.status))
     const facturate = oferteFiltered.filter(o => o.status === 'facturat')
-    const prodFact = produse.filter(p => p.oferta_status === 'facturat')
-    const valFact = prodFact.reduce((s, p) => s + p.pret_vanzare * p.cantitate, 0)
-    const profitFact = prodFact.reduce((s, p) => s + (p.pret_vanzare - p.pret_achizitie) * p.cantitate, 0)
+    const valFact = facturiProduseFiltered.reduce((s, p) => s + p.vanzari_nete, 0)
+    const profitFact = facturiProduseFiltered.reduce((s, p) => s + p.profit, 0)
     const valStoc = stoc.reduce((s, i) => s + i.cantitate * i.pret_achizitie, 0)
     const anulate = oferteFiltered.filter(o => o.status === 'anulata').length
     const total = oferteFiltered.length
     return { active: active.length, facturate: facturate.length, valFact, profitFact, valStoc, anulate, total }
-  }, [oferteFiltered, produse, stoc])
+  }, [oferteFiltered, facturiProduseFiltered, stoc])
 
   // ── Tab: Oferte ──────────────────────────────────────────────────────────
 
@@ -224,37 +270,35 @@ export default function RapoartePage() {
     return Object.entries(map).map(([user, count]) => ({ user, count })).sort((a, b) => b.count - a.count)
   }, [oferteFiltered])
 
-  // ── Tab: Vânzări ─────────────────────────────────────────────────────────
-
-  const prodFact = useMemo(() =>
-    produse.filter(p => p.oferta_status === 'facturat')
-  , [produse])
-
   const topProduse = useMemo(() => {
-    const map: Record<string, { cantitate: number; valoare: number; profit: number }> = {}
-    prodFact.forEach(p => {
-      if (!map[p.produs_nume]) map[p.produs_nume] = { cantitate: 0, valoare: 0, profit: 0 }
-      map[p.produs_nume].cantitate += p.cantitate
-      map[p.produs_nume].valoare += p.pret_vanzare * p.cantitate
-      map[p.produs_nume].profit += (p.pret_vanzare - p.pret_achizitie) * p.cantitate
+    const map: Record<string, { cantitate: number; valoare: number; cost: number; profit: number }> = {}
+    facturiProduseFiltered.forEach(p => {
+      if (!map[p.produs]) map[p.produs] = { cantitate: 0, valoare: 0, cost: 0, profit: 0 }
+      map[p.produs].cantitate += p.cantitate
+      map[p.produs].valoare += p.vanzari_nete
+      map[p.produs].cost += p.cost_achizitie
+      map[p.produs].profit += p.profit
     })
-    return Object.entries(map).map(([produs, v]) => ({ produs, ...v })).sort((a, b) => b.valoare - a.valoare).slice(0, 20)
-  }, [prodFact])
+    return Object.entries(map)
+      .map(([produs, v]) => ({ produs, ...v, marja: v.valoare > 0 ? (v.profit / v.valoare) * 100 : 0 }))
+      .sort((a, b) => b.valoare - a.valoare)
+      .slice(0, 30)
+  }, [facturiProduseFiltered])
 
   const topClientiValoare = useMemo(() => {
-    const map: Record<string, { valoare: number; profit: number; nrFacturi: number }> = {}
-    prodFact.forEach(p => {
-      const c = p.client_denumire ?? '(fără client)'
-      if (!map[c]) map[c] = { valoare: 0, profit: 0, nrFacturi: 0 }
-      map[c].valoare += p.pret_vanzare * p.cantitate
-      map[c].profit += (p.pret_vanzare - p.pret_achizitie) * p.cantitate
+    const map: Record<string, { valoare: number; cost: number; profit: number; nrLinii: number }> = {}
+    facturiProduseFiltered.forEach(p => {
+      const c = p.client_denumire
+      if (!map[c]) map[c] = { valoare: 0, cost: 0, profit: 0, nrLinii: 0 }
+      map[c].valoare += p.vanzari_nete
+      map[c].cost += p.cost_achizitie
+      map[c].profit += p.profit
+      map[c].nrLinii++
     })
-    oferteFiltered.filter(o => o.status === 'facturat').forEach(o => {
-      const c = o.client_denumire
-      if (map[c]) map[c].nrFacturi++
-    })
-    return Object.entries(map).map(([client, v]) => ({ client, ...v })).sort((a, b) => b.valoare - a.valoare)
-  }, [prodFact, oferteFiltered])
+    return Object.entries(map)
+      .map(([client, v]) => ({ client, ...v, marja: v.valoare > 0 ? (v.profit / v.valoare) * 100 : 0 }))
+      .sort((a, b) => b.valoare - a.valoare)
+  }, [facturiProduseFiltered])
 
   // ── Tab: Profit pe produs ────────────────────────────────────────────────
 
@@ -488,10 +532,11 @@ export default function RapoartePage() {
           {/* ════ TAB: VÂNZĂRI ══════════════════════════════════════════════ */}
           {tab === 'vanzari' && (
             <>
-              {/* Top clienți după valoare */}
+              {/* Marjă pe clienți */}
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-5 py-4 border-b border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-900">Top clienți după valoare facturată</h3>
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Marjă adaos pe clienți</h3>
+                  <span className="text-xs text-gray-400">din facturi emise</span>
                 </div>
                 {topClientiValoare.length === 0 ? (
                   <p className="px-5 py-8 text-sm text-gray-400 text-center">Nicio factură emisă în perioada selectată.</p>
@@ -499,38 +544,36 @@ export default function RapoartePage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        <th className="text-left px-5 py-3 text-gray-600 font-medium">#</th>
-                        <th className="text-left px-5 py-3 text-gray-600 font-medium">Client</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-medium">Nr. facturi</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-medium">Valoare</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-medium">Profit</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-medium">Marjă</th>
+                        <th className="text-left px-5 py-3 text-gray-600 font-semibold">#</th>
+                        <th className="text-left px-5 py-3 text-gray-600 font-semibold">Client</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Valoare vânz.</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Cost ach.</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Profit</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Marjă %</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {topClientiValoare.map((row, i) => {
-                        const marja = row.valoare > 0 ? (row.profit / row.valoare) * 100 : 0
-                        return (
-                          <tr key={row.client} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
-                            <td className="px-5 py-3 text-gray-400 font-mono text-xs">{i + 1}</td>
-                            <td className="px-5 py-3 font-medium text-gray-900">{row.client}</td>
-                            <td className="px-5 py-3 text-right text-gray-700">{row.nrFacturi}</td>
-                            <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmt(row.valoare)} RON</td>
-                            <td className="px-5 py-3 text-right font-semibold text-green-700">{fmt(row.profit)} RON</td>
-                            <td className="px-5 py-3 text-right">
-                              <span className={`font-bold text-sm ${marja >= 20 ? 'text-green-600' : marja >= 10 ? 'text-yellow-600' : 'text-red-500'}`}>
-                                {marja.toFixed(1)}%
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      })}
+                      {topClientiValoare.map((row, i) => (
+                        <tr key={row.client} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                          <td className="px-5 py-3 text-gray-400 font-mono text-xs">{i + 1}</td>
+                          <td className="px-5 py-3 font-medium text-gray-900">{row.client}</td>
+                          <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmt(row.valoare)} RON</td>
+                          <td className="px-5 py-3 text-right text-gray-500">{fmt(row.cost)} RON</td>
+                          <td className="px-5 py-3 text-right font-semibold" style={{ color: row.profit >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(row.profit)} RON</td>
+                          <td className="px-5 py-3 text-right">
+                            <span className={`font-bold text-sm px-2 py-0.5 rounded ${row.marja >= 20 ? 'bg-green-100 text-green-700' : row.marja >= 10 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
+                              {row.marja.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                     <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                       <tr>
-                        <td colSpan={3} className="px-5 py-3 font-semibold text-gray-700">TOTAL</td>
+                        <td colSpan={2} className="px-5 py-3 font-bold text-gray-800">TOTAL</td>
                         <td className="px-5 py-3 text-right font-bold text-gray-900">{fmt(kpi.valFact)} RON</td>
-                        <td className="px-5 py-3 text-right font-bold text-green-700">{fmt(kpi.profitFact)} RON</td>
+                        <td className="px-5 py-3 text-right font-bold text-gray-600">{fmt(topClientiValoare.reduce((s, r) => s + r.cost, 0))} RON</td>
+                        <td className="px-5 py-3 text-right font-bold" style={{ color: kpi.profitFact >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(kpi.profitFact)} RON</td>
                         <td className="px-5 py-3 text-right font-bold text-gray-900">
                           {kpi.valFact > 0 ? ((kpi.profitFact / kpi.valFact) * 100).toFixed(1) : '0.0'}%
                         </td>
@@ -540,10 +583,11 @@ export default function RapoartePage() {
                 )}
               </div>
 
-              {/* Top produse vândute */}
+              {/* Marjă pe produse */}
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-5 py-4 border-b border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-900">Top produse vândute (după valoare)</h3>
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Marjă adaos pe produse</h3>
+                  <span className="text-xs text-gray-400">sortare după valoare vânzări</span>
                 </div>
                 {topProduse.length === 0 ? (
                   <p className="px-5 py-8 text-sm text-gray-400 text-center">Niciun produs facturat în perioada selectată.</p>
@@ -551,11 +595,13 @@ export default function RapoartePage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        <th className="text-left px-5 py-3 text-gray-600 font-medium">#</th>
-                        <th className="text-left px-5 py-3 text-gray-600 font-medium">Produs</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-medium">Cant.</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-medium">Valoare</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-medium">Profit</th>
+                        <th className="text-left px-5 py-3 text-gray-600 font-semibold">#</th>
+                        <th className="text-left px-5 py-3 text-gray-600 font-semibold">Produs</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Cant.</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Valoare vânz.</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Cost ach.</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Profit</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Marjă %</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -563,9 +609,15 @@ export default function RapoartePage() {
                         <tr key={row.produs} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
                           <td className="px-5 py-3 text-gray-400 font-mono text-xs">{i + 1}</td>
                           <td className="px-5 py-3 font-medium text-gray-900">{row.produs}</td>
-                          <td className="px-5 py-3 text-right text-gray-700">{row.cantitate}</td>
+                          <td className="px-5 py-3 text-right text-gray-600">{row.cantitate}</td>
                           <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmt(row.valoare)} RON</td>
-                          <td className="px-5 py-3 text-right font-semibold text-green-700">{fmt(row.profit)} RON</td>
+                          <td className="px-5 py-3 text-right text-gray-500">{fmt(row.cost)} RON</td>
+                          <td className="px-5 py-3 text-right font-semibold" style={{ color: row.profit >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(row.profit)} RON</td>
+                          <td className="px-5 py-3 text-right">
+                            <span className={`font-bold text-sm px-2 py-0.5 rounded ${row.marja >= 20 ? 'bg-green-100 text-green-700' : row.marja >= 10 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
+                              {row.marja.toFixed(1)}%
+                            </span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

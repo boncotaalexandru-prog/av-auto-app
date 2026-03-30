@@ -5,6 +5,34 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  function handleCopy() {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Copiază cod"
+      className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded p-1 transition-colors"
+    >
+      {copied ? (
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+      )}
+    </button>
+  )
+}
+
 interface Oferta {
   id: string
   numar: number | null
@@ -13,7 +41,7 @@ interface Oferta {
   client_id: string
   preluat_de: string | null
   clienti: { denumire: string } | null
-  clienti_masini: { nr_inmatriculare: string | null; marca: string | null } | null
+  clienti_masini: { nr_inmatriculare: string | null; marca: string | null; vin: string | null } | null
 }
 
 interface OfertaProdus {
@@ -125,7 +153,7 @@ export default function OfertaPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('oferte')
-        .select('id, numar, status, necesar_piese, client_id, clienti(denumire), clienti_masini(nr_inmatriculare, marca)')
+        .select('id, numar, status, necesar_piese, client_id, clienti(denumire), clienti_masini(nr_inmatriculare, marca, vin)')
         .eq('id', id).single(),
       supabase.from('oferte_produse')
         .select('*, furnizori(denumire)')
@@ -489,11 +517,29 @@ export default function OfertaPage() {
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-900 mt-0.5">
-                {oferta.clienti?.denumire}
-                {masina && ` — ${masina.nr_inmatriculare || ''} ${masina.marca ? '· ' + masina.marca : ''}`}
-                {oferta.necesar_piese && ` — ${oferta.necesar_piese}`}
-              </p>
+              <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                <span className="text-sm text-gray-900">
+                  {oferta.clienti?.denumire}
+                  {masina && ` — ${masina.nr_inmatriculare || ''} ${masina.marca ? '· ' + masina.marca : ''}`}
+                  {oferta.necesar_piese && ` — ${oferta.necesar_piese}`}
+                </span>
+                {masina?.vin && (
+                  <span className="flex items-center gap-1 text-sm font-mono text-gray-700">
+                    <span className="text-xs text-gray-400">VIN:</span>
+                    {masina.vin}
+                    <button
+                      onClick={() => navigator.clipboard.writeText(masina!.vin!)}
+                      className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded p-1 transition-colors"
+                      title="Copiaza VIN"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                    </button>
+                  </span>
+                )}
+              </div>
             </div>
             {/* Buton previzualizare — doar in status finalizata */}
             {oferta.status === 'finalizata' && (
@@ -558,7 +604,14 @@ export default function OfertaPage() {
                   <td className="px-4 py-2.5 text-gray-900">{p.producator || '—'}</td>
                   <td className="px-4 py-2.5 text-gray-900">{p.cantitate}</td>
                   <td className="px-4 py-2.5 text-gray-900">{p.unitate || '—'}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-gray-900">{p.cod || '—'}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-gray-900">
+                    {p.cod ? (
+                      <span className="flex items-center gap-1.5">
+                        {p.cod}
+                        <CopyButton text={p.cod} />
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td className="px-4 py-2.5 text-right text-gray-900">{p.pret_achizitie?.toFixed(2)}</td>
                   <td className="px-4 py-2.5 text-right text-gray-900 font-semibold">{p.pret_vanzare?.toFixed(2)}</td>
                   <td className="px-4 py-2.5 text-right text-xs font-semibold">
@@ -820,9 +873,18 @@ export default function OfertaPage() {
             <div className="px-6 py-5 space-y-4">
               {/* Cautare catalog */}
               <div ref={prodRef}>
-                <label className="block text-sm font-medium text-gray-900 mb-1.5">
-                  Selecteaza produs din catalog
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-gray-900">
+                    Selecteaza produs din catalog
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setShowProdList(false); setModalProdusNou(true) }}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    + Produs nou în catalog
+                  </button>
+                </div>
                 <div className="relative">
                   <input
                     type="text"
@@ -883,7 +945,10 @@ export default function OfertaPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <p className="text-xs text-gray-900 mb-0.5">Cod/SKU</p>
-                      <p className="text-sm font-mono text-gray-900">{form.cod || '—'}</p>
+                      <p className="text-sm font-mono text-gray-900 flex items-center gap-1.5">
+                        {form.cod || '—'}
+                        {form.cod && <CopyButton text={form.cod} />}
+                      </p>
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-0.5">

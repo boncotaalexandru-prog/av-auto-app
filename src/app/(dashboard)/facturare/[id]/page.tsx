@@ -9,13 +9,16 @@ interface FacturaDetaliu {
   numar: number
   data_emitere: string
   status: string
+  tip: string
   observatii: string | null
   client_id: string
   client_denumire: string
+  referinta_id: string | null
 }
 
 interface ProdusFactura {
   id: string
+  produs_id: string | null
   stoc_id: string | null
   nume_produs: string
   cod: string | null
@@ -31,6 +34,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   emisa:        { label: 'Emisă',        color: 'bg-blue-100 text-blue-800' },
   platita:      { label: 'Plătită',      color: 'bg-green-100 text-green-800' },
   anulata:      { label: 'Anulată',      color: 'bg-red-100 text-red-800' },
+  stornata:     { label: 'Stornată',     color: 'bg-purple-100 text-purple-800' },
 }
 
 export default function FacturaDetaliuPage() {
@@ -50,16 +54,16 @@ export default function FacturaDetaliuPage() {
     const supabase = createClient()
 
     const { data: f } = await supabase.from('facturi')
-      .select('id, numar, data_emitere, status, observatii, client_id, clienti(denumire)')
+      .select('id, numar, data_emitere, status, tip, observatii, client_id, referinta_id, clienti(denumire)')
       .eq('id', id).single()
 
     if (!f) { setLoading(false); return }
 
     const client = Array.isArray(f.clienti) ? f.clienti[0] : (f.clienti as { denumire: string } | null)
-    setFactura({ ...f, client_denumire: client?.denumire ?? '—' })
+    setFactura({ ...f, tip: f.tip ?? 'normala', client_denumire: client?.denumire ?? '—' })
 
     const { data: p } = await supabase.from('facturi_produse')
-      .select('id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
+      .select('id, produs_id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
       .eq('factura_id', id)
 
     setProduse(p ?? [])
@@ -98,6 +102,66 @@ export default function FacturaDetaliuPage() {
     router.push('/facturare')
   }
 
+  async function storneazaIntegral() {
+    if (!factura) return
+    if (!confirm(`Stornezi integral Factura #${factura.numar}? Se va crea o factură storno și stocul va fi restituit.`)) return
+    setSalvandStatus(true)
+    const supabase = createClient()
+
+    // Creaza factura storno
+    const { data: storno, error } = await supabase.from('facturi').insert({
+      client_id: factura.client_id,
+      data_emitere: new Date().toISOString().slice(0, 10),
+      status: 'emisa',
+      tip: 'storno',
+      referinta_id: factura.id,
+      observatii: `Storno Factura #${factura.numar}`,
+    }).select('id').single()
+
+    if (error || !storno) {
+      alert('Eroare la creare storno: ' + error?.message)
+      setSalvandStatus(false)
+      return
+    }
+
+    // Insereaza produsele cu cantitate negativa, legate exact de linia originala
+    await supabase.from('facturi_produse').insert(
+      produse.map(p => ({
+        factura_id: storno.id,
+        referinta_linie_id: p.id,
+        produs_id: p.produs_id,
+        stoc_id: p.stoc_id,
+        nume_produs: p.nume_produs,
+        cod: p.cod,
+        producator: p.producator,
+        unitate: p.unitate,
+        cantitate: -p.cantitate,
+        pret_achizitie: p.pret_achizitie,
+        pret_vanzare: p.pret_vanzare,
+      }))
+    )
+
+    // Restituie stocul
+    for (const p of produse) {
+      if (p.stoc_id) {
+        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', p.stoc_id).single()
+        if (s) await supabase.from('stoc').update({ cantitate: s.cantitate + p.cantitate }).eq('id', p.stoc_id)
+        continue
+      }
+      if (!p.cod) continue
+      const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
+        .eq('produs_cod', p.cod).order('updated_at', { ascending: true }).limit(1)
+      if (intrari?.length) {
+        await supabase.from('stoc').update({ cantitate: intrari[0].cantitate + p.cantitate }).eq('id', intrari[0].id)
+      }
+    }
+
+    // Marcheaza factura originala ca anulata — nu mai poate fi stornata din nou
+    await supabase.from('facturi').update({ status: 'stornata' }).eq('id', id)
+
+    router.push(`/facturare/${storno.id}`)
+  }
+
   if (loading) return <div className="text-sm text-gray-600 p-8">Se încarcă...</div>
   if (!factura) return <div className="text-sm text-red-700 p-8">Factura nu a fost găsită.</div>
 
@@ -119,6 +183,11 @@ export default function FacturaDetaliuPage() {
           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${s.color}`}>
             {s.label}
           </span>
+          {factura.tip === 'storno' && (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800">
+              STORNO
+            </span>
+          )}
         </div>
 
         {/* Actiuni status */}
@@ -136,12 +205,17 @@ export default function FacturaDetaliuPage() {
               </button>
             </>
           )}
-          {factura.status === 'emisa' && (
+          {factura.status === 'emisa' && factura.tip !== 'storno' && (
             <>
               <button onClick={() => schimbaStatus('platita')} disabled={salvandStatus}
                 className="px-4 py-2 text-sm font-bold text-white rounded-lg disabled:opacity-40"
                 style={{ backgroundColor: '#16a34a' }}>
                 ✓ Marchează plătită
+              </button>
+              <button onClick={storneazaIntegral} disabled={salvandStatus}
+                className="px-4 py-2 text-sm font-bold text-white rounded-lg disabled:opacity-40"
+                style={{ backgroundColor: '#7c3aed' }}>
+                ↩ Stornează integral
               </button>
               <button onClick={stergeFactura} disabled={salvandStatus}
                 className="px-4 py-2 text-sm font-semibold text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40">
@@ -149,11 +223,18 @@ export default function FacturaDetaliuPage() {
               </button>
             </>
           )}
-          {factura.status === 'platita' && (
-            <button onClick={() => schimbaStatus('emisa')} disabled={salvandStatus}
-              className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40">
-              ↩ Anulează plata
-            </button>
+          {factura.status === 'platita' && factura.tip !== 'storno' && (
+            <>
+              <button onClick={() => schimbaStatus('emisa')} disabled={salvandStatus}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40">
+                ↩ Anulează plata
+              </button>
+              <button onClick={storneazaIntegral} disabled={salvandStatus}
+                className="px-4 py-2 text-sm font-bold text-white rounded-lg disabled:opacity-40"
+                style={{ backgroundColor: '#7c3aed' }}>
+                ↩ Stornează integral
+              </button>
+            </>
           )}
           {factura.status === 'anulata' && (
             <button onClick={stergeFactura} disabled={salvandStatus}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { read, utils } from 'xlsx'
+import ProdusNouModal from '@/components/produse/ProdusNouModal'
 
 // ─── Tipuri ─────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,9 @@ export default function GestiunePage() {
   const [valoareFacturaVerif, setValoareFacturaVerif] = useState('')
   const [nirProduse, setNirProduse] = useState<NirProdusForm[]>([emptyProdus()])
   const [salvandNir, setSalvandNir] = useState(false)
+  const [numarDocError, setNumarDocError] = useState(false)
+  const [furnizorError, setFurnizorError] = useState(false)
+  const [modalProdusNouKey, setModalProdusNouKey] = useState<string | null>(null)
   const [editNirId, setEditNirId] = useState<string | null>(null)
   const [editOriginalProduse, setEditOriginalProduse] = useState<NirProdusForm[]>([])
 
@@ -186,6 +190,12 @@ export default function GestiunePage() {
     setProdResultsMap(m => ({ ...m, [key]: (data as ProdusSearch[]) ?? [] }))
   }
 
+  function produsNouSalvatNir(p: { id: string; cod: string | null; nume: string; unitate: string | null; pret: number | null; producator: string | null }) {
+    if (!modalProdusNouKey) return
+    selectProdusNir(modalProdusNouKey, { id: p.id, cod: p.cod, nume: p.nume, unitate: p.unitate, producator: p.producator, pret: p.pret })
+    setModalProdusNouKey(null)
+  }
+
   function selectProdusNir(key: string, p: ProdusSearch) {
     setNirProduse(prev => prev.map(r => r._key === key ? {
       ...r, produs_id: p.id, produs_cod: p.cod ?? '', produs_nume: p.nume,
@@ -206,7 +216,7 @@ export default function GestiunePage() {
     delta: 1 | -1
   ) {
     for (const p of produse) {
-      if (!p.produs_nume.trim() || p.cantitate <= 0) continue
+      if (!p.produs_nume.trim() || p.cantitate === 0) continue
       let stocQuery = supabase.from('stoc').select('id, cantitate').eq('produs_nume', p.produs_nume)
       stocQuery = furnId ? stocQuery.eq('furnizor_id', furnId) : stocQuery.is('furnizor_id', null)
       const { data: stocEx } = await stocQuery.maybeSingle()
@@ -227,7 +237,7 @@ export default function GestiunePage() {
           updatePayload.pret_lista = pretLista
         }
         await supabase.from('stoc').update(updatePayload).eq('id', stocEx.id)
-      } else if (delta === 1) {
+      } else if (delta === 1 && p.cantitate > 0) {
         // Daca produsul nu exista in catalog, il cream automat
         let produsId = p.produs_id || null
         if (!produsId && p.produs_nume.trim()) {
@@ -258,10 +268,39 @@ export default function GestiunePage() {
   }
 
   async function salveazaNir() {
-    const valide = nirProduse.filter(p => p.produs_nume.trim() && p.cantitate > 0)
+    // Validare câmpuri obligatorii
+    if (!furnizorId) {
+      setFurnizorError(true)
+      alert('Furnizorul este obligatoriu!')
+      return
+    }
+    setFurnizorError(false)
+    if (!numarDocument.trim()) {
+      setNumarDocError(true)
+      alert('Numărul documentului furnizorului este obligatoriu!')
+      return
+    }
+    setNumarDocError(false)
+
+    const valide = nirProduse.filter(p => p.produs_nume.trim() && p.cantitate !== 0)
     if (!valide.length) return
     setSalvandNir(true)
     const supabase = createClient()
+
+    // Verificare duplicat document furnizor
+    let dupQuery = supabase.from('nir').select('id, numar').eq('numar_document', numarDocument.trim())
+    if (furnizorId) {
+      dupQuery = dupQuery.eq('furnizor_id', furnizorId)
+    } else {
+      dupQuery = dupQuery.is('furnizor_id', null)
+    }
+    if (editNirId) dupQuery = dupQuery.neq('id', editNirId)
+    const { data: dup } = await dupQuery.maybeSingle()
+    if (dup) {
+      alert(`Documentul "${numarDocument}" de la acest furnizor există deja (NIR #${(dup as {numar: number}).numar})!\n\nNu poți înregistra același document de două ori.`)
+      setSalvandNir(false)
+      return
+    }
 
     const totalFaraTva = valide.reduce((s, p) => s + p.cantitate * p.pret_achizitie, 0)
     const totalTva = parseFloat((totalFaraTva * TVA).toFixed(2))
@@ -400,6 +439,8 @@ export default function GestiunePage() {
     setProdSearchMap({})
     setProdResultsMap({})
     setShowProdMap({})
+    setNumarDocError(false)
+    setFurnizorError(false)
   }
 
   async function deschideEditNir(nir: NirRow) {
@@ -701,18 +742,18 @@ export default function GestiunePage() {
               <div className="grid grid-cols-2 gap-4">
                 {/* Furnizor */}
                 <div ref={furnRef}>
-                  <label className="block text-sm font-medium text-gray-900 mb-1.5">Furnizor</label>
+                  <label className="block text-sm font-medium text-gray-900 mb-1.5">Furnizor <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <input type="text" value={furnizorSearch}
-                      onChange={e => { setFurnizorSearch(e.target.value); setShowFurnList(true) }}
+                      onChange={e => { setFurnizorSearch(e.target.value); setShowFurnList(true); if (furnizorError) setFurnizorError(false) }}
                       onFocus={() => setShowFurnList(true)}
                       placeholder="Caută furnizor..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className={`w-full px-3 py-2 border rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 ${furnizorError ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-blue-500'}`}
                     />
                     {showFurnList && (
                       <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
                         {furnizorResults.map(f => (
-                          <button key={f.id} onClick={() => { setFurnizorId(f.id); setFurnizorLabel(f.denumire); setFurnizorSearch(f.denumire); setShowFurnList(false) }}
+                          <button key={f.id} onClick={() => { setFurnizorId(f.id); setFurnizorLabel(f.denumire); setFurnizorSearch(f.denumire); setShowFurnList(false); setFurnizorError(false) }}
                             className="w-full text-left px-3 py-2 text-sm text-gray-900 hover:bg-blue-50 border-b border-gray-100 last:border-0 flex items-center gap-2">
                             <span style={{ color: f.is_favorit ? '#F59E0B' : 'transparent' }}>★</span>
                             {f.denumire}
@@ -725,10 +766,12 @@ export default function GestiunePage() {
                 </div>
                 {/* Număr document */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-1.5">Număr document furnizor</label>
-                  <input type="text" value={numarDocument} onChange={e => setNumarDocument(e.target.value)}
+                  <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                    Număr document furnizor <span className="text-red-500">*</span>
+                  </label>
+                  <input type="text" value={numarDocument} onChange={e => { setNumarDocument(e.target.value); if (e.target.value.trim()) setNumarDocError(false) }}
                     placeholder="ex. 12345"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full px-3 py-2 border rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 ${numarDocError ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-blue-500'}`}
                   />
                 </div>
                 {/* Dată document */}
@@ -816,6 +859,18 @@ export default function GestiunePage() {
                                   ))}
                                 </div>
                               )}
+                              {showProdMap[rand._key] && (prodSearchMap[rand._key] ?? '').trim() && (prodResultsMap[rand._key] ?? []).length === 0 && (
+                                <div className="absolute z-50 w-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-xl px-2 py-1.5 flex items-center justify-between">
+                                  <span className="text-xs text-gray-500">Niciun produs găsit.</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setShowProdMap(m => ({ ...m, [rand._key]: false })); setModalProdusNouKey(rand._key) }}
+                                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline ml-2 whitespace-nowrap"
+                                  >
+                                    + Creează produs nou
+                                  </button>
+                                </div>
+                              )}
                             </div>
                             {!rand.produs_id && (prodSearchMap[rand._key] ?? rand.produs_nume) && (
                               <input type="text" placeholder="Producător..."
@@ -824,10 +879,18 @@ export default function GestiunePage() {
                                 className="w-full mt-1 px-2 py-1 border border-gray-200 rounded text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none"
                               />
                             )}
+                            {rand.produs_id && (() => {
+                              const stocCant = stoc.filter(s => s.produs_id === rand.produs_id || (rand.produs_cod && s.produs_cod === rand.produs_cod)).reduce((sum, s) => sum + s.cantitate, 0)
+                              return (
+                                <p className={`text-xs mt-0.5 font-medium ${stocCant > 0 ? 'text-green-600' : 'text-orange-500'}`}>
+                                  Stoc curent: {stocCant} {rand.unitate || 'buc'}
+                                </p>
+                              )
+                            })()}
                           </td>
                           {/* Cantitate */}
                           <td className="px-3 py-2">
-                            <input type="number" min="0" step="0.01" value={rand.cantitate}
+                            <input type="number" step="0.01" value={rand.cantitate}
                               onChange={e => setNirProduse(p => p.map(r => r._key === rand._key ? { ...r, cantitate: parseFloat(e.target.value) || 0 } : r))}
                               className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 text-right"
                             />
@@ -918,6 +981,14 @@ export default function GestiunePage() {
           </div>
         </div>
       )}
+
+      {/* Modal produs nou în catalog (din NIR) */}
+      <ProdusNouModal
+        open={modalProdusNouKey !== null}
+        onClose={() => setModalProdusNouKey(null)}
+        onSaved={produsNouSalvatNir}
+        numeInitial={modalProdusNouKey ? (prodSearchMap[modalProdusNouKey] ?? '') : ''}
+      />
 
       {/* ════════════════════════════════════════════════
           MODAL — Import Stoc Initial

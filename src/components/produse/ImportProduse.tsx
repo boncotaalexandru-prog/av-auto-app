@@ -48,18 +48,31 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
           unitate: row[5]?.toString().trim() ?? '',
         }))
 
-      // Check which codes already exist
-      const coduriImport = parsed.map(p => p.cod).filter(Boolean)
+      // Incarca TOATE codurile si numele existente din DB (paginated)
       const supabase = createClient()
+      const codExistente = new Set<string>()
+      const numeExistente = new Set<string>()
+      let from = 0
+      const pageSize = 1000
+      while (true) {
+        const { data } = await supabase
+          .from('produse')
+          .select('cod, nume')
+          .range(from, from + pageSize - 1)
+        if (!data || data.length === 0) break
+        data.forEach(p => {
+          if (p.cod) codExistente.add(p.cod.trim().toLowerCase())
+          if (p.nume) numeExistente.add(p.nume.trim().toLowerCase())
+        })
+        if (data.length < pageSize) break
+        from += pageSize
+      }
 
-      const { data: existente } = await supabase
-        .from('produse')
-        .select('cod')
-        .in('cod', coduriImport)
-
-      const codExistente = new Set((existente ?? []).map(p => p.cod))
-
-      const noi = parsed.filter(p => !p.cod || !codExistente.has(p.cod))
+      const noi = parsed.filter(p => {
+        if (p.cod && codExistente.has(p.cod.trim().toLowerCase())) return false
+        if (!p.cod && numeExistente.has(p.nume.trim().toLowerCase())) return false
+        return true
+      })
       const existenteCount = parsed.length - noi.length
 
       setProduse(noi)

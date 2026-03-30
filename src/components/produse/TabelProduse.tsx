@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 interface Produs {
@@ -19,6 +20,7 @@ interface EditRow {
 }
 
 export default function TabelProduse({ refresh }: { refresh: number }) {
+  const router = useRouter()
   const [produse, setProduse] = useState<Produs[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -101,8 +103,9 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
               </thead>
               <tbody>
                 {produse.map(p => (
-                  <tr key={p.id} className="border-t border-gray-200 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-900">{p.nume}</td>
+                  <tr key={p.id} className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
+                    onClick={e => { if ((e.target as HTMLElement).closest('button,input')) return; router.push(`/produse/${p.id}`) }}>
+                    <td className="px-4 py-2.5 text-gray-900 font-medium hover:text-blue-700">{p.nume}</td>
                     <td className="px-4 py-2.5 text-gray-900 font-mono text-xs">{p.cod || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-900">
                       {editing?.id === p.id ? (
@@ -150,12 +153,20 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => setEditing({ id: p.id, pret: p.pret?.toString() ?? '', producator: p.producator ?? '' })}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          Editeaza
-                        </button>
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => setEditing({ id: p.id, pret: p.pret?.toString() ?? '', producator: p.producator ?? '' })}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            Editeaza
+                          </button>
+                          <button
+                            onClick={() => router.push(`/produse/${p.id}`)}
+                            className="text-xs text-gray-500 hover:text-gray-900 font-medium px-2 py-0.5 rounded hover:bg-gray-100"
+                          >
+                            Detalii →
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>

@@ -20,6 +20,7 @@ interface Client {
   pers_contact: string | null
   telefon: string | null
   are_contract: boolean
+  platitor_tva: boolean
   termen_plata: number | null
   observatii: string | null
 }
@@ -271,6 +272,26 @@ export default function ClientPage() {
                 client.are_contract ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-900'
               }`}>
                 {client.are_contract ? 'Da — contract activ' : 'Nu'}
+              </span>
+            )}
+          </div>
+          <div>
+            <p className="text-xs text-gray-900 mb-1">Plătitor TVA</p>
+            {editMode ? (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!form.platitor_tva}
+                  onChange={e => setForm(f => ({ ...f, platitor_tva: e.target.checked }))}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                />
+                <span className="text-sm text-gray-700">Plătitor TVA</span>
+              </label>
+            ) : (
+              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                client.platitor_tva ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-900'
+              }`}>
+                {client.platitor_tva ? 'Da' : 'Nu'}
               </span>
             )}
           </div>

@@ -18,6 +18,9 @@ interface Settings {
   logo_url: string
   termen_plata_zile: string
   ibans: IbanEntry[]
+  serie_factura: string
+  oblio_email: string
+  oblio_secret: string
 }
 
 const empty: Settings = {
@@ -30,6 +33,9 @@ const empty: Settings = {
   logo_url: '',
   termen_plata_zile: '1',
   ibans: [],
+  serie_factura: '',
+  oblio_email: '',
+  oblio_secret: '',
 }
 
 export default function SettingsForm() {
@@ -65,6 +71,9 @@ export default function SettingsForm() {
             logo_url: data.logo_url || '',
             termen_plata_zile: data.termen_plata_zile?.toString() || '1',
             ibans,
+            serie_factura: data.serie_factura || '',
+            oblio_email: data.oblio_email || '',
+            oblio_secret: data.oblio_secret || '',
           })
         }
         setLoading(false)
@@ -116,6 +125,9 @@ export default function SettingsForm() {
         logo_url: settings.logo_url,
         termen_plata_zile: parseInt(settings.termen_plata_zile) || 1,
         ibans: settings.ibans,
+        serie_factura: settings.serie_factura,
+        oblio_email: settings.oblio_email,
+        oblio_secret: settings.oblio_secret,
         updated_at: new Date().toISOString(),
       })
       .eq('id', 1)
@@ -288,6 +300,44 @@ export default function SettingsForm() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Oblio API */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 className="text-base font-semibold text-gray-900 mb-1">Oblio API</h3>
+        <p className="text-xs text-gray-500 mb-4">Credențiale pentru emiterea automată a facturilor în Oblio.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Serie factură</label>
+            <input
+              type="text"
+              value={settings.serie_factura}
+              onChange={e => setSettings(s => ({ ...s, serie_factura: e.target.value }))}
+              placeholder="ex: AVF"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 placeholder:text-gray-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email cont Oblio</label>
+            <input
+              type="email"
+              value={settings.oblio_email}
+              onChange={e => setSettings(s => ({ ...s, oblio_email: e.target.value }))}
+              placeholder="email@firma.ro"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 placeholder:text-gray-400"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Secret Oblio</label>
+            <input
+              type="password"
+              value={settings.oblio_secret}
+              onChange={e => setSettings(s => ({ ...s, oblio_secret: e.target.value }))}
+              placeholder="Cheia API din contul Oblio"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 placeholder:text-gray-400"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="flex justify-end">
