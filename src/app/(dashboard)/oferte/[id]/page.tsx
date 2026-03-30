@@ -756,15 +756,17 @@ export default function OfertaPage() {
                                   className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
                                 />
                               </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-900 mb-1">Data livrare</label>
-                                <input
-                                  type="date"
-                                  value={rand.data_livrare}
-                                  onChange={e => setConfirmaRanduri(prev => prev.map((r, i) => i === idx ? { ...r, data_livrare: e.target.value } : r))}
-                                  className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                />
-                              </div>
+                              {rand.ora_ridicare !== 'Stoc CT' && (
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-900 mb-1">Data livrare</label>
+                                  <input
+                                    type="date"
+                                    value={rand.data_livrare}
+                                    onChange={e => setConfirmaRanduri(prev => prev.map((r, i) => i === idx ? { ...r, data_livrare: e.target.value } : r))}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  />
+                                </div>
+                              )}
                             </>
                           )}
                         </div>
@@ -1119,8 +1121,8 @@ export default function OfertaPage() {
                       </button>
                     ))}
                   </div>
-                  {/* Data livrare */}
-                  {form.ora_ridicare && (
+                  {/* Data livrare — nu e relevanta daca e Stoc CT */}
+                  {form.ora_ridicare && form.ora_ridicare !== 'Stoc CT' && (
                     <div>
                       <label className="block text-xs font-medium text-gray-900 mb-1">Data livrare (optional)</label>
                       <input
