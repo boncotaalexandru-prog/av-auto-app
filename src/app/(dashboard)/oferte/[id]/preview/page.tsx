@@ -77,7 +77,7 @@ export default function OfertaPreviewPage() {
         .order('created_at'),
       supabase.from('settings').select('*').eq('id', 1).single(),
     ]).then(([{ data: o }, { data: p }, { data: s }]) => {
-      setOferta(o as Oferta)
+      setOferta(o as unknown as Oferta)
       setProduse((p as Produs[]) ?? [])
       setSetari(s as Setari)
       setLoading(false)

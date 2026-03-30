@@ -11,6 +11,7 @@ interface Oferta {
   status: string
   necesar_piese: string | null
   client_id: string
+  preluat_de: string | null
   clienti: { denumire: string } | null
   clienti_masini: { nr_inmatriculare: string | null; marca: string | null } | null
 }
@@ -131,7 +132,7 @@ export default function OfertaPage() {
         .eq('oferta_id', id)
         .order('created_at'),
     ]).then(([{ data: o }, { data: p }]) => {
-      setOferta(o as Oferta)
+      setOferta(o as unknown as Oferta)
       setProduse((p as OfertaProdus[]) ?? [])
       setLoading(false)
     })

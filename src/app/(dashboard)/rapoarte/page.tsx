@@ -188,7 +188,7 @@ export default function RapoartePage() {
   const kpi = useMemo(() => {
     const active = oferteFiltered.filter(o => !['draft', 'anulata'].includes(o.status))
     const facturate = oferteFiltered.filter(o => o.status === 'facturat')
-    const prodFact = produse.filter(p => p.oferte?.status === 'facturat')
+    const prodFact = produse.filter(p => p.oferta_status === 'facturat')
     const valFact = prodFact.reduce((s, p) => s + p.pret_vanzare * p.cantitate, 0)
     const profitFact = prodFact.reduce((s, p) => s + (p.pret_vanzare - p.pret_achizitie) * p.cantitate, 0)
     const valStoc = stoc.reduce((s, i) => s + i.cantitate * i.pret_achizitie, 0)

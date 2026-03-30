@@ -46,7 +46,7 @@ export default function OferteP() {
       .order('created_at', { ascending: false })
       .limit(200)
       .then(({ data }) => {
-        const list = (data as Oferta[]) ?? []
+        const list = (data as unknown as Oferta[]) ?? []
         _cache = list
         setOferte(list)
         setLoading(false)
