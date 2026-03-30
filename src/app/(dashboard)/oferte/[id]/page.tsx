@@ -808,7 +808,7 @@ export default function OfertaPage() {
       {/* Modal adauga produs */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[95vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col" style={{ height: '92vh', overflowY: 'auto' }}>
             {/* Header modal */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
               <h3 className="text-lg font-bold text-gray-900">Adauga Produs</h3>
@@ -1068,7 +1068,7 @@ export default function OfertaPage() {
                   />
                   <span className="absolute left-3 top-2.5 text-gray-600 text-sm">🔍</span>
                   {showFurnList && (
-                    <div className="absolute z-10 w-full bottom-full mb-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    <div className="absolute z-50 w-full bottom-full mb-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                       {/* Stoc Propriu — mereu primul */}
                       <button
                         onClick={() => selectFurnizor({ id: null, denumire: 'Stoc Propriu', is_favorit: false })}
