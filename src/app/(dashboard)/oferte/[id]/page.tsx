@@ -1068,7 +1068,7 @@ export default function OfertaPage() {
                   />
                   <span className="absolute left-3 top-2.5 text-gray-600 text-sm">🔍</span>
                   {showFurnList && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    <div className="absolute z-10 w-full bottom-full mb-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                       {/* Stoc Propriu — mereu primul */}
                       <button
                         onClick={() => selectFurnizor({ id: null, denumire: 'Stoc Propriu', is_favorit: false })}
