@@ -10,7 +10,7 @@ export default function Header({ profile }: { profile: Profile | null }) {
           <p className="text-sm font-medium text-gray-900">
             {profile?.full_name ?? profile?.email ?? 'Utilizator'}
           </p>
-          <p className="text-xs text-gray-500 capitalize">{profile?.role ?? 'user'}</p>
+          <p className="text-xs text-gray-900 capitalize">{profile?.role ?? 'user'}</p>
         </div>
 
         <form action={logout}>

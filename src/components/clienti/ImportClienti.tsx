@@ -106,7 +106,7 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
     </div>
   )
 
-  if (step === 'analyzing') return <p className="text-sm text-gray-500">Se analizeaza fisierul...</p>
+  if (step === 'analyzing') return <p className="text-sm text-gray-900">Se analizeaza fisierul...</p>
 
   if (step === 'preview' && stats) return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
@@ -115,7 +115,7 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
       <div className="grid grid-cols-3 gap-3 text-center">
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Total in fisier</p>
+          <p className="text-xs text-gray-900 mt-0.5">Total in fisier</p>
         </div>
         <div className="bg-green-50 rounded-lg p-3">
           <p className="text-2xl font-bold text-green-700">{stats.noi}</p>
@@ -140,8 +140,8 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
               {clienti.slice(0, 50).map((c, i) => (
                 <tr key={i} className="border-t border-gray-200">
                   <td className="px-3 py-1.5 text-gray-900">{c.denumire}</td>
-                  <td className="px-3 py-1.5 text-gray-500">{c.cod_fiscal || '—'}</td>
-                  <td className="px-3 py-1.5 text-gray-500">{c.localitate || '—'}</td>
+                  <td className="px-3 py-1.5 text-gray-900">{c.cod_fiscal || '—'}</td>
+                  <td className="px-3 py-1.5 text-gray-900">{c.localitate || '—'}</td>
                 </tr>
               ))}
               {clienti.length > 50 && (

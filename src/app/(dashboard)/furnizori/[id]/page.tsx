@@ -108,7 +108,7 @@ export default function FurnizorPage() {
     setOre(prev => prev.filter(o => o.id !== oraId))
   }
 
-  if (loading) return <p className="text-sm text-gray-500 p-6">Se incarca...</p>
+  if (loading) return <p className="text-sm text-gray-900 p-6">Se incarca...</p>
   if (!furnizor) return <p className="text-sm text-red-600 p-6">Furnizorul nu a fost gasit.</p>
 
   return (
@@ -223,7 +223,7 @@ export default function FurnizorPage() {
         <div className="grid grid-cols-2 gap-x-8 gap-y-3">
           {Object.keys(FIELD_LABELS).map(key => (
             <div key={key}>
-              <p className="text-xs text-gray-500 mb-0.5">{FIELD_LABELS[key]}</p>
+              <p className="text-xs text-gray-900 mb-0.5">{FIELD_LABELS[key]}</p>
               {editMode ? (
                 <input
                   type="text"

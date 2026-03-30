@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+interface IbanEntry {
+  iban: string
+  banca: string
+}
+
 interface Settings {
   company_name: string
   address: string
@@ -11,6 +16,8 @@ interface Settings {
   cui: string
   reg_com: string
   logo_url: string
+  termen_plata_zile: string
+  ibans: IbanEntry[]
 }
 
 const empty: Settings = {
@@ -21,6 +28,8 @@ const empty: Settings = {
   cui: '',
   reg_com: '',
   logo_url: '',
+  termen_plata_zile: '1',
+  ibans: [],
 }
 
 export default function SettingsForm() {
@@ -39,7 +48,25 @@ export default function SettingsForm() {
       .eq('id', 1)
       .single()
       .then(({ data }) => {
-        if (data) setSettings({ ...empty, ...data })
+        if (data) {
+          // Migreaza iban1/banca1/iban2/banca2 vechi in ibans daca ibans e gol
+          let ibans: IbanEntry[] = Array.isArray(data.ibans) ? data.ibans : []
+          if (ibans.length === 0) {
+            if (data.iban1) ibans.push({ iban: data.iban1, banca: data.banca1 || '' })
+            if (data.iban2) ibans.push({ iban: data.iban2, banca: data.banca2 || '' })
+          }
+          setSettings({
+            company_name: data.company_name || '',
+            address: data.address || '',
+            phone: data.phone || '',
+            email: data.email || '',
+            cui: data.cui || '',
+            reg_com: data.reg_com || '',
+            logo_url: data.logo_url || '',
+            termen_plata_zile: data.termen_plata_zile?.toString() || '1',
+            ibans,
+          })
+        }
         setLoading(false)
       })
   }, [])
@@ -79,7 +106,18 @@ export default function SettingsForm() {
     const supabase = createClient()
     const { error } = await supabase
       .from('settings')
-      .update({ ...settings, updated_at: new Date().toISOString() })
+      .update({
+        company_name: settings.company_name,
+        address: settings.address,
+        phone: settings.phone,
+        email: settings.email,
+        cui: settings.cui,
+        reg_com: settings.reg_com,
+        logo_url: settings.logo_url,
+        termen_plata_zile: parseInt(settings.termen_plata_zile) || 1,
+        ibans: settings.ibans,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', 1)
 
     setSaving(false)
@@ -87,13 +125,27 @@ export default function SettingsForm() {
       setMessage({ type: 'error', text: 'Eroare la salvare: ' + error.message })
     } else {
       setMessage({ type: 'success', text: 'Setarile au fost salvate.' })
-      // Reload page so sidebar/favicon updates
       window.location.reload()
     }
   }
 
+  function addIban() {
+    setSettings(s => ({ ...s, ibans: [...s.ibans, { iban: '', banca: '' }] }))
+  }
+
+  function removeIban(index: number) {
+    setSettings(s => ({ ...s, ibans: s.ibans.filter((_, i) => i !== index) }))
+  }
+
+  function updateIban(index: number, field: 'iban' | 'banca', value: string) {
+    setSettings(s => ({
+      ...s,
+      ibans: s.ibans.map((entry, i) => i === index ? { ...entry, [field]: value } : entry),
+    }))
+  }
+
   if (loading) {
-    return <p className="text-gray-500">Se incarca...</p>
+    return <p className="text-gray-900">Se incarca...</p>
   }
 
   return (
@@ -161,7 +213,7 @@ export default function SettingsForm() {
               <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
               <input
                 type="text"
-                value={settings[key as keyof Settings]}
+                value={settings[key as keyof Omit<Settings, 'ibans'>] as string}
                 onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.value }))}
                 placeholder={placeholder}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 placeholder:text-gray-400"
@@ -170,7 +222,7 @@ export default function SettingsForm() {
           ))}
 
           <div className="sm:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Adresa</label>
+            <label className="block text-sm font-medium text-gray-900 mb-1">Adresa</label>
             <input
               type="text"
               value={settings.address}
@@ -179,7 +231,63 @@ export default function SettingsForm() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 placeholder:text-gray-400"
             />
           </div>
+
         </div>
+      </div>
+
+      {/* IBAN-uri */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-gray-900">Conturi bancare (IBAN)</h3>
+          <button
+            type="button"
+            onClick={addIban}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            + Adauga IBAN
+          </button>
+        </div>
+
+        {settings.ibans.length === 0 ? (
+          <p className="text-sm text-gray-500 py-2">Niciun cont bancar adaugat. Apasa &quot;+ Adauga IBAN&quot;.</p>
+        ) : (
+          <div className="space-y-3">
+            {settings.ibans.map((entry, index) => (
+              <div key={index} className="flex gap-3 items-start">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">IBAN</label>
+                  <input
+                    type="text"
+                    value={entry.iban}
+                    onChange={e => updateIban(index, 'iban', e.target.value)}
+                    placeholder="RO06BTRL..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 font-mono placeholder:text-gray-400"
+                  />
+                </div>
+                <div className="w-48">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Banca</label>
+                  <input
+                    type="text"
+                    value={entry.banca}
+                    onChange={e => updateIban(index, 'banca', e.target.value)}
+                    placeholder="BANCA TRANSILVANIA"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 placeholder:text-gray-400"
+                  />
+                </div>
+                <div className="pt-5">
+                  <button
+                    type="button"
+                    onClick={() => removeIban(index)}
+                    className="px-2.5 py-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+                    title="Sterge"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end">

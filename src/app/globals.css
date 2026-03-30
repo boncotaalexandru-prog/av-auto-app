@@ -24,3 +24,43 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Butoane active: pointer + tranziție la hover ─────────────────────────── */
+/* Regulile fără @layer câștigă întotdeauna față de regulile Tailwind din @layer */
+button,
+[role="button"],
+a[href],
+select,
+label[for],
+input[type="submit"],
+input[type="button"],
+input[type="reset"],
+input[type="checkbox"],
+input[type="radio"] {
+  cursor: pointer !important;
+}
+
+button:disabled,
+input:disabled,
+select:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.5;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href] {
+  transition: opacity 0.15s ease, transform 0.12s ease, background-color 0.15s ease;
+}
+
+button:not(:disabled):hover,
+[role="button"]:not([aria-disabled="true"]):hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: translateY(0px);
+  opacity: 1;
+}

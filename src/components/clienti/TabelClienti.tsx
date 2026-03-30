@@ -63,9 +63,9 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {loading ? (
-          <p className="text-sm text-gray-500 p-6">Se incarca...</p>
+          <p className="text-sm text-gray-900 p-6">Se incarca...</p>
         ) : clienti.length === 0 ? (
-          <p className="text-sm text-gray-500 p-6">
+          <p className="text-sm text-gray-900 p-6">
             {search ? 'Niciun rezultat.' : 'Nu exista clienti. Importa un fisier XLS.'}
           </p>
         ) : (
@@ -95,17 +95,17 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
                         {c.denumire}
                       </button>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{c.cod_fiscal || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-900 font-mono text-xs">{c.cod_fiscal || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-600">{c.localitate || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{c.judet || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{c.telefon || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-900">{c.judet || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-900">{c.telefon || '—'}</td>
                     <td className="px-4 py-2.5">
                       {c.are_contract ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
                           Da
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-900">
                           Nu
                         </span>
                       )}

@@ -52,7 +52,7 @@ export default function SignupForm() {
       <div className="text-center space-y-3">
         <div className="text-4xl">✓</div>
         <h3 className="text-lg font-semibold text-gray-900">Cont creat!</h3>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-900">
           Verifica emailul pentru a confirma contul, apoi te poti conecta.
         </p>
         <a

@@ -13,7 +13,7 @@ export default function DashboardPage() {
             key={stat.label}
             className="bg-white rounded-xl border border-gray-200 p-5"
           >
-            <p className="text-sm text-gray-500">{stat.label}</p>
+            <p className="text-sm text-gray-900">{stat.label}</p>
             <p className="text-3xl font-bold text-gray-900 mt-1">{stat.value}</p>
           </div>
         ))}

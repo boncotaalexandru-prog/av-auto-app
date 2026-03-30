@@ -1,0 +1,245 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter, useParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+
+interface FacturaDetaliu {
+  id: string
+  numar: number
+  data_emitere: string
+  status: string
+  observatii: string | null
+  client_id: string
+  client_denumire: string
+}
+
+interface ProdusFactura {
+  id: string
+  stoc_id: string | null
+  nume_produs: string
+  cod: string | null
+  producator: string | null
+  unitate: string
+  cantitate: number
+  pret_achizitie: number
+  pret_vanzare: number
+}
+
+const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  nefinalizata: { label: 'Nefinalizată', color: 'bg-orange-100 text-orange-800' },
+  emisa:        { label: 'Emisă',        color: 'bg-blue-100 text-blue-800' },
+  platita:      { label: 'Plătită',      color: 'bg-green-100 text-green-800' },
+  anulata:      { label: 'Anulată',      color: 'bg-red-100 text-red-800' },
+}
+
+export default function FacturaDetaliuPage() {
+  const router = useRouter()
+  const params = useParams()
+  const id = params.id as string
+
+  const [factura, setFactura] = useState<FacturaDetaliu | null>(null)
+  const [produse, setProduse] = useState<ProdusFactura[]>([])
+  const [loading, setLoading] = useState(true)
+  const [salvandStatus, setSalvandStatus] = useState(false)
+
+  useEffect(() => { load() }, [id])
+
+  async function load() {
+    setLoading(true)
+    const supabase = createClient()
+
+    const { data: f } = await supabase.from('facturi')
+      .select('id, numar, data_emitere, status, observatii, client_id, clienti(denumire)')
+      .eq('id', id).single()
+
+    if (!f) { setLoading(false); return }
+
+    const client = Array.isArray(f.clienti) ? f.clienti[0] : (f.clienti as { denumire: string } | null)
+    setFactura({ ...f, client_denumire: client?.denumire ?? '—' })
+
+    const { data: p } = await supabase.from('facturi_produse')
+      .select('id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
+      .eq('factura_id', id)
+
+    setProduse(p ?? [])
+    setLoading(false)
+  }
+
+  async function schimbaStatus(nou: string) {
+    if (!factura) return
+    setSalvandStatus(true)
+    await createClient().from('facturi').update({ status: nou }).eq('id', id)
+    setFactura(f => f ? { ...f, status: nou } : f)
+    setSalvandStatus(false)
+  }
+
+  async function stergeFactura() {
+    if (!confirm('Ștergi factura și restituii stocul?')) return
+    setSalvandStatus(true)
+    const supabase = createClient()
+
+    // Restituie stocul pentru fiecare produs
+    for (const p of produse) {
+      if (p.stoc_id) {
+        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', p.stoc_id).single()
+        if (s) await supabase.from('stoc').update({ cantitate: s.cantitate + p.cantitate }).eq('id', p.stoc_id)
+        continue
+      }
+      if (!p.cod) continue
+      const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
+        .eq('produs_cod', p.cod).order('updated_at', { ascending: true }).limit(1)
+      if (intrari?.length) {
+        await supabase.from('stoc').update({ cantitate: intrari[0].cantitate + p.cantitate }).eq('id', intrari[0].id)
+      }
+    }
+
+    await supabase.from('facturi').delete().eq('id', id)
+    router.push('/facturare')
+  }
+
+  if (loading) return <div className="text-sm text-gray-600 p-8">Se încarcă...</div>
+  if (!factura) return <div className="text-sm text-red-700 p-8">Factura nu a fost găsită.</div>
+
+  const total = produse.reduce((s, p) => s + p.cantitate * p.pret_vanzare, 0)
+  const totalAch = produse.reduce((s, p) => s + p.cantitate * p.pret_achizitie, 0)
+  const adaos = totalAch > 0 ? ((total - totalAch) / totalAch) * 100 : null
+  const s = STATUS_LABEL[factura.status] ?? { label: factura.status, color: 'bg-gray-100 text-gray-700' }
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.push('/facturare')} className="text-sm text-gray-700 hover:text-gray-900 font-medium">
+            ← Înapoi la facturi
+          </button>
+          <span className="text-gray-300">|</span>
+          <h2 className="text-2xl font-bold text-gray-900">Factura #{factura.numar}</h2>
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${s.color}`}>
+            {s.label}
+          </span>
+        </div>
+
+        {/* Actiuni status */}
+        <div className="flex gap-2">
+          {factura.status === 'nefinalizata' && (
+            <>
+              <button onClick={stergeFactura} disabled={salvandStatus}
+                className="px-4 py-2 text-sm font-semibold text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40">
+                🗑 Șterge + restituie stoc
+              </button>
+              <button onClick={() => schimbaStatus('emisa')} disabled={salvandStatus}
+                className="px-4 py-2 text-sm font-bold text-white rounded-lg disabled:opacity-40"
+                style={{ backgroundColor: '#0f172a' }}>
+                🧾 Emite factură
+              </button>
+            </>
+          )}
+          {factura.status === 'emisa' && (
+            <>
+              <button onClick={() => schimbaStatus('platita')} disabled={salvandStatus}
+                className="px-4 py-2 text-sm font-bold text-white rounded-lg disabled:opacity-40"
+                style={{ backgroundColor: '#16a34a' }}>
+                ✓ Marchează plătită
+              </button>
+              <button onClick={stergeFactura} disabled={salvandStatus}
+                className="px-4 py-2 text-sm font-semibold text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40">
+                Șterge + restituie stoc
+              </button>
+            </>
+          )}
+          {factura.status === 'platita' && (
+            <button onClick={() => schimbaStatus('emisa')} disabled={salvandStatus}
+              className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40">
+              ↩ Anulează plata
+            </button>
+          )}
+          {factura.status === 'anulata' && (
+            <button onClick={stergeFactura} disabled={salvandStatus}
+              className="px-4 py-2 text-sm font-semibold text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40">
+              🗑 Șterge definitiv + restituie stoc
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Info factura */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <p className="text-xs text-gray-500 mb-0.5">Client</p>
+          <p className="font-semibold text-gray-900">{factura.client_denumire}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-0.5">Data emiterii</p>
+          <p className="font-semibold text-gray-900">
+            {new Date(factura.data_emitere).toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-0.5">Total fără TVA</p>
+          <p className="font-bold text-gray-900 text-lg">{total.toFixed(2)} <span className="text-sm font-normal text-gray-500">RON</span></p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-0.5">Total cu TVA 21%</p>
+          <p className="font-bold text-gray-900 text-lg">{(total * 1.21).toFixed(2)} <span className="text-sm font-normal text-gray-500">RON</span></p>
+        </div>
+        {adaos !== null && (
+          <div>
+            <p className="text-xs text-gray-500 mb-0.5">Adaos</p>
+            <p className="font-semibold text-green-700">+{adaos.toFixed(1)}%</p>
+          </div>
+        )}
+      </div>
+
+      {/* Produse */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">Produse ({produse.length})</h3>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-700">Produs</th>
+              <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Cant.</th>
+              <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Preț ach.</th>
+              <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Preț vânz.</th>
+              <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {produse.map(p => (
+              <tr key={p.id} className="border-t border-gray-100">
+                <td className="px-4 py-3">
+                  <p className="font-medium text-gray-900">{p.nume_produs}</p>
+                  <div className="flex gap-2 mt-0.5">
+                    {p.cod && <span className="text-xs text-gray-600 font-mono">{p.cod}</span>}
+                    {p.producator && <span className="text-xs text-gray-500">{p.producator}</span>}
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-right text-gray-900">{p.cantitate} {p.unitate}</td>
+                <td className="px-4 py-3 text-right text-gray-600">{p.pret_achizitie.toFixed(2)}</td>
+                <td className="px-4 py-3 text-right text-gray-900">{p.pret_vanzare.toFixed(2)}</td>
+                <td className="px-4 py-3 text-right font-semibold text-gray-900">{(p.cantitate * p.pret_vanzare).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+            <tr>
+              <td colSpan={4} className="px-4 py-2 text-right text-xs text-gray-600">Total fără TVA:</td>
+              <td className="px-4 py-2 text-right text-gray-800 font-medium">{total.toFixed(2)} RON</td>
+            </tr>
+            <tr>
+              <td colSpan={4} className="px-4 py-2 text-right text-xs text-gray-600">TVA 21%:</td>
+              <td className="px-4 py-2 text-right text-gray-700">{(total * 0.21).toFixed(2)} RON</td>
+            </tr>
+            <tr className="border-t border-gray-300">
+              <td colSpan={4} className="px-4 py-3 text-right text-sm font-bold text-gray-900">Total cu TVA:</td>
+              <td className="px-4 py-3 text-right font-bold text-gray-900 text-base">{(total * 1.21).toFixed(2)} RON</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}

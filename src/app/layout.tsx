@@ -47,7 +47,16 @@ export default function RootLayout({
       lang="ro"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <style dangerouslySetInnerHTML={{ __html: `
+          button, [role="button"], a[href], select { cursor: pointer !important; }
+          button:disabled, select:disabled { cursor: not-allowed !important; opacity: 0.5; }
+          button:not(:disabled), [role="button"], a[href] { transition: opacity .15s ease, transform .12s ease, background-color .15s ease; }
+          button:not(:disabled):hover, [role="button"]:hover, a[href]:hover { opacity: .85; transform: translateY(-1px); }
+          button:not(:disabled):active, a[href]:active { transform: translateY(0); opacity: 1; }
+        ` }} />
+        {children}
+      </body>
     </html>
   );
 }

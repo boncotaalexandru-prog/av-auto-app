@@ -81,9 +81,9 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {loading ? (
-          <p className="text-sm text-gray-500 p-6">Se incarca...</p>
+          <p className="text-sm text-gray-900 p-6">Se incarca...</p>
         ) : produse.length === 0 ? (
-          <p className="text-sm text-gray-500 p-6">
+          <p className="text-sm text-gray-900 p-6">
             {search ? 'Niciun rezultat.' : 'Nu exista produse. Importa un fisier XLS.'}
           </p>
         ) : (
@@ -91,11 +91,11 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Denumire</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Cod</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Producator</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">UM</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Pret lista</th>
+                  <th className="text-left px-4 py-3 text-gray-900 font-medium">Denumire</th>
+                  <th className="text-left px-4 py-3 text-gray-900 font-medium">Cod</th>
+                  <th className="text-left px-4 py-3 text-gray-900 font-medium">Producator</th>
+                  <th className="text-left px-4 py-3 text-gray-900 font-medium">UM</th>
+                  <th className="text-left px-4 py-3 text-gray-900 font-medium">Pret lista</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -103,8 +103,8 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                 {produse.map(p => (
                   <tr key={p.id} className="border-t border-gray-200 hover:bg-gray-50">
                     <td className="px-4 py-2.5 text-gray-900">{p.nume}</td>
-                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{p.cod || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-600">
+                    <td className="px-4 py-2.5 text-gray-900 font-mono text-xs">{p.cod || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-900">
                       {editing?.id === p.id ? (
                         <input
                           type="text"
@@ -114,11 +114,11 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                           placeholder="Producator"
                         />
                       ) : (
-                        p.producator || <span className="text-gray-600">—</span>
+                        p.producator || <span className="text-gray-900">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500">{p.unitate || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-600">
+                    <td className="px-4 py-2.5 text-gray-900">{p.unitate || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-900">
                       {editing?.id === p.id ? (
                         <input
                           type="number"
@@ -129,7 +129,7 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                           step="0.01"
                         />
                       ) : (
-                        p.pret != null ? `${p.pret} RON` : <span className="text-gray-600">—</span>
+                        p.pret != null ? `${p.pret} RON` : <span className="text-gray-900">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">

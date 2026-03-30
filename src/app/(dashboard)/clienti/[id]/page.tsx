@@ -33,8 +33,10 @@ interface Masina {
 
 interface PretSpecial {
   id: string
-  pret: number
-  produse: { cod: string | null; nume: string } | null
+  produs_cod: string | null
+  produs_nume: string
+  pret_vanzare: number
+  updated_at: string
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -67,6 +69,14 @@ export default function ClientPage() {
   const [masinaNoua, setMasinaNoua] = useState({ nr_inmatriculare: '', marca: '', vin: '' })
   const [addingMasina, setAddingMasina] = useState(false)
 
+  // Preturi speciale — adaugare manuala
+  const [addingPret, setAddingPret] = useState(false)
+  const [pretForm, setPretForm] = useState({ produs_cod: '', produs_nume: '', pret_vanzare: '' })
+  const [prodSearch, setProdSearch] = useState('')
+  const [prodResults, setProdResults] = useState<{ id: string; cod: string | null; nume: string }[]>([])
+  const [showProdDrop, setShowProdDrop] = useState(false)
+  const [savingPret, setSavingPret] = useState(false)
+
   useEffect(() => {
     if (!id) return
     const supabase = createClient()
@@ -76,9 +86,9 @@ export default function ClientPage() {
       supabase.from('clienti_masini').select('*').eq('client_id', id).order('created_at'),
       supabase
         .from('clienti_preturi')
-        .select('id, pret, produse(cod, nume)')
+        .select('id, produs_cod, produs_nume, pret_vanzare, updated_at')
         .eq('client_id', id)
-        .order('created_at'),
+        .order('produs_nume'),
     ]).then(([{ data: c }, { data: m }, { data: p }]) => {
       setClient(c)
       setForm(c ?? {})
@@ -125,7 +135,63 @@ export default function ClientPage() {
     setMasini(prev => prev.filter(m => m.id !== masinaId))
   }
 
-  if (loading) return <p className="text-sm text-gray-500 p-6">Se incarca...</p>
+  async function cautaProdus(q: string) {
+    setProdSearch(q)
+    setPretForm(f => ({ ...f, produs_nume: q, produs_cod: '' }))
+    if (q.trim().length < 2) { setProdResults([]); setShowProdDrop(false); return }
+    const { data } = await createClient().from('produse')
+      .select('id, cod, nume').ilike('nume', `%${q}%`).limit(8)
+    setProdResults(data ?? [])
+    setShowProdDrop(true)
+  }
+
+  function selectProdPret(p: { id: string; cod: string | null; nume: string }) {
+    setProdSearch(p.nume)
+    setPretForm(f => ({ ...f, produs_cod: p.cod ?? '', produs_nume: p.nume }))
+    setProdResults([])
+    setShowProdDrop(false)
+  }
+
+  async function salvezaPretSpecial() {
+    if (!pretForm.produs_nume.trim() || !pretForm.pret_vanzare) return
+    setSavingPret(true)
+    const supabase = createClient()
+    const row = {
+      client_id: id,
+      produs_cod: pretForm.produs_cod || null,
+      produs_nume: pretForm.produs_nume,
+      pret_vanzare: parseFloat(pretForm.pret_vanzare),
+      updated_at: new Date().toISOString(),
+    }
+    // delete + insert (upsert cu partial index nu merge in Supabase)
+    if (row.produs_cod) {
+      await supabase.from('clienti_preturi').delete()
+        .eq('client_id', id).eq('produs_cod', row.produs_cod)
+    }
+    const { data, error } = await supabase.from('clienti_preturi')
+      .insert(row)
+      .select('id, produs_cod, produs_nume, pret_vanzare, updated_at')
+      .single()
+    if (error) {
+      console.error('[PretSpecial] Eroare save:', error)
+      alert('Eroare la salvare: ' + error.message)
+      setSavingPret(false)
+      return
+    }
+    if (data) {
+      setPreturi(prev => {
+        const exists = prev.findIndex(x => data.produs_cod && x.produs_cod === data.produs_cod)
+        if (exists >= 0) { const n = [...prev]; n[exists] = data as PretSpecial; return n }
+        return [...prev, data as PretSpecial]
+      })
+    }
+    setPretForm({ produs_cod: '', produs_nume: '', pret_vanzare: '' })
+    setProdSearch('')
+    setAddingPret(false)
+    setSavingPret(false)
+  }
+
+  if (loading) return <p className="text-sm text-gray-900 p-6">Se incarca...</p>
   if (!client) return <p className="text-sm text-red-600 p-6">Clientul nu a fost gasit.</p>
 
   return (
@@ -168,7 +234,7 @@ export default function ClientPage() {
         <div className="grid grid-cols-2 gap-x-8 gap-y-3">
           {Object.keys(FIELD_LABELS).map(key => (
             <div key={key}>
-              <p className="text-xs text-gray-500 mb-0.5">{FIELD_LABELS[key]}</p>
+              <p className="text-xs text-gray-900 mb-0.5">{FIELD_LABELS[key]}</p>
               {editMode ? (
                 <input
                   type="text"
@@ -189,7 +255,7 @@ export default function ClientPage() {
         <h3 className="font-semibold text-gray-900 mb-4">Date comerciale</h3>
         <div className="grid grid-cols-2 gap-x-8 gap-y-4">
           <div>
-            <p className="text-xs text-gray-500 mb-1">Contract</p>
+            <p className="text-xs text-gray-900 mb-1">Contract</p>
             {editMode ? (
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -202,14 +268,14 @@ export default function ClientPage() {
               </label>
             ) : (
               <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                client.are_contract ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                client.are_contract ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-900'
               }`}>
                 {client.are_contract ? 'Da — contract activ' : 'Nu'}
               </span>
             )}
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1">Termen plata (zile)</p>
+            <p className="text-xs text-gray-900 mb-1">Termen plata (zile)</p>
             {editMode ? (
               <input
                 type="number"
@@ -225,7 +291,7 @@ export default function ClientPage() {
             )}
           </div>
           <div className="col-span-2">
-            <p className="text-xs text-gray-500 mb-1">Observatii</p>
+            <p className="text-xs text-gray-900 mb-1">Observatii</p>
             {editMode ? (
               <textarea
                 value={form.observatii ?? ''}
@@ -336,24 +402,106 @@ export default function ClientPage() {
       </div>
 
       {/* Preturi speciale */}
-      {preturi.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Preturi speciale</h3>
-          <div className="divide-y divide-gray-200">
-            {preturi.map(p => (
-              <div key={p.id} className="py-2.5 flex items-center gap-4">
-                {p.produse && (
-                  <>
-                    <span className="font-mono text-xs text-gray-600 w-24">{p.produse.cod || '—'}</span>
-                    <span className="text-sm text-gray-900 flex-1">{p.produse.nume}</span>
-                  </>
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-gray-900">Prețuri speciale</h3>
+            {preturi.length > 0 && (
+              <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{preturi.length} produse</span>
+            )}
+          </div>
+          <button
+            onClick={() => setAddingPret(v => !v)}
+            className="px-3 py-1.5 text-sm font-semibold rounded-lg text-white"
+            style={{ backgroundColor: addingPret ? '#6b7280' : '#7c3aed' }}
+          >
+            {addingPret ? '✕ Anulează' : '+ Adaugă preț'}
+          </button>
+        </div>
+
+        {/* Form adaugare manuala */}
+        {addingPret && (
+          <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+            <p className="text-xs font-semibold text-purple-800 uppercase tracking-wide">Adaugă preț special manual</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Produs</label>
+                <input
+                  type="text"
+                  value={prodSearch}
+                  onChange={e => cautaProdus(e.target.value)}
+                  placeholder="Caută produs..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                {showProdDrop && prodResults.length > 0 && (
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {prodResults.map(p => (
+                      <button key={p.id} onClick={() => selectProdPret(p)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-b border-gray-100 last:border-0">
+                        <span className="font-medium text-gray-900">{p.nume}</span>
+                        {p.cod && <span className="text-gray-500 ml-2 font-mono text-xs">{p.cod}</span>}
+                      </button>
+                    ))}
+                  </div>
                 )}
-                <span className="text-sm font-semibold text-blue-700">{p.pret} RON</span>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Preț vânzare (RON, fără TVA)</label>
+                <input
+                  type="number" min={0} step={0.01}
+                  value={pretForm.pret_vanzare}
+                  onChange={e => setPretForm(f => ({ ...f, pret_vanzare: e.target.value }))}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={salvezaPretSpecial}
+                disabled={savingPret || !pretForm.produs_nume.trim() || !pretForm.pret_vanzare}
+                className="px-4 py-2 text-white text-sm font-semibold rounded-lg"
+                style={{ backgroundColor: (savingPret || !pretForm.produs_nume.trim() || !pretForm.pret_vanzare) ? '#9ca3af' : '#7c3aed' }}
+              >
+                {savingPret ? 'Se salvează...' : '✓ Salvează preț'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {preturi.length === 0 && !addingPret ? (
+          <p className="text-sm text-gray-500 italic">Niciun preț special setat. Folosește butonul <strong className="text-gray-700">+ Adaugă preț</strong> pentru a seta un preț special pentru acest client.</p>
+        ) : preturi.length > 0 ? (
+          <div className="divide-y divide-gray-200">
+            <div className="grid grid-cols-12 gap-2 pb-2 text-xs font-bold text-gray-600 uppercase tracking-wide">
+              <span className="col-span-2">Cod</span>
+              <span className="col-span-6">Produs</span>
+              <span className="col-span-2 text-right">Preț special</span>
+              <span className="col-span-1 text-right">Actualizat</span>
+              <span className="col-span-1"></span>
+            </div>
+            {preturi.map(p => (
+              <div key={p.id} className="grid grid-cols-12 gap-2 py-3 items-center" style={{ color: '#111827' }}>
+                <span className="col-span-2 font-mono text-xs font-semibold" style={{ color: '#374151' }}>{p.produs_cod || '—'}</span>
+                <span className="col-span-6 text-sm font-semibold" style={{ color: '#111827' }}>{p.produs_nume}</span>
+                <span className="col-span-2 text-right text-sm font-bold" style={{ color: '#6d28d9' }}>{p.pret_vanzare.toFixed(2)} RON</span>
+                <span className="col-span-1 text-right text-xs font-medium" style={{ color: '#374151' }}>{new Date(p.updated_at).toLocaleDateString('ro-RO')}</span>
+                <div className="col-span-1 flex justify-end">
+                  <button
+                    onClick={async () => {
+                      await createClient().from('clienti_preturi').delete().eq('id', p.id)
+                      setPreturi(prev => prev.filter(x => x.id !== p.id))
+                    }}
+                    className="text-xs text-red-500 hover:text-red-700 font-medium"
+                  >
+                    Șterge
+                  </button>
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   )
 }

@@ -112,7 +112,7 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
   }
 
   if (step === 'analyzing') {
-    return <p className="text-sm text-gray-500">Se analizeaza fisierul...</p>
+    return <p className="text-sm text-gray-900">Se analizeaza fisierul...</p>
   }
 
   if (step === 'preview' && stats) {
@@ -123,7 +123,7 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
         <div className="grid grid-cols-3 gap-3 text-center">
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Total in fisier</p>
+            <p className="text-xs text-gray-900 mt-0.5">Total in fisier</p>
           </div>
           <div className="bg-green-50 rounded-lg p-3">
             <p className="text-2xl font-bold text-green-700">{stats.noi}</p>
@@ -136,7 +136,7 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
         </div>
 
         {stats.noi === 0 ? (
-          <p className="text-sm text-gray-500">Toate produsele exista deja in baza de date.</p>
+          <p className="text-sm text-gray-900">Toate produsele exista deja in baza de date.</p>
         ) : (
           <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg">
             <table className="w-full text-xs">
@@ -150,9 +150,9 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
               <tbody>
                 {produse.slice(0, 50).map((p, i) => (
                   <tr key={i} className="border-t border-gray-200">
-                    <td className="px-3 py-1.5 text-gray-500">{p.cod || '—'}</td>
+                    <td className="px-3 py-1.5 text-gray-900">{p.cod || '—'}</td>
                     <td className="px-3 py-1.5 text-gray-900">{p.nume}</td>
-                    <td className="px-3 py-1.5 text-gray-500">{p.unitate || '—'}</td>
+                    <td className="px-3 py-1.5 text-gray-900">{p.unitate || '—'}</td>
                   </tr>
                 ))}
                 {produse.length > 50 && (

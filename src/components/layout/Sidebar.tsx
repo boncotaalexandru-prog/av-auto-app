@@ -13,14 +13,16 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: '⊞' },
-  { label: 'Produse', href: '/produse', icon: '📦' },
-  { label: 'Furnizori', href: '/furnizori', icon: '🏭' },
-  { label: 'Oferte', href: '/oferte', icon: '📋' },
+  { label: 'Dashboard',        href: '/dashboard',        icon: '⊞' },
+  { label: 'Produse',          href: '/produse',          icon: '📦' },
+  { label: 'Furnizori',        href: '/furnizori',        icon: '🏭' },
+  { label: 'Oferte',           href: '/oferte',           icon: '📋' },
+  { label: 'Facturare',        href: '/facturare',        icon: '🧾' },
   { label: 'Marfa de ridicat', href: '/marfa-de-ridicat', icon: '🚛' },
-  { label: 'Clienti', href: '/clienti', icon: '👥' },
-  { label: 'Rapoarte', href: '/rapoarte', icon: '📊', adminOnly: true },
-  { label: 'Setari', href: '/setari', icon: '⚙️', adminOnly: true },
+  { label: 'Gestiune',         href: '/gestiune',         icon: '🏪' },
+  { label: 'Clienti',          href: '/clienti',          icon: '👥' },
+  { label: 'Rapoarte',         href: '/rapoarte',         icon: '📊', adminOnly: true },
+  { label: 'Setari',           href: '/setari',           icon: '⚙️', adminOnly: true },
 ]
 
 export default function Sidebar({
@@ -37,7 +39,7 @@ export default function Sidebar({
   )
 
   return (
-    <aside className="w-64 bg-gray-900 text-white flex flex-col">
+    <aside className="w-56 bg-gray-900 text-white flex flex-col">
       <div className="px-5 py-4 border-b border-gray-700 flex items-center gap-3">
         {logoUrl && (
           <div className="w-8 h-8 flex-shrink-0 rounded overflow-hidden bg-white/10 flex items-center justify-center">
