@@ -678,8 +678,8 @@ function FacturarePageInner() {
             measuringUnit: p.unitate || 'buc',
             quantity: p.cantitate,
             price: p.pret_vanzare,
-            vatName: vatPayer ? 'Normala' : 'Scutit',
-            vatPercentage: vatPayer ? 21 : 0,
+            vatName: 'Normala',
+            vatPercentage: 21,
             isDiscount: false,
           })),
         }
