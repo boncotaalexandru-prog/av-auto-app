@@ -79,12 +79,21 @@ export default function IncasariPage() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setEroare(data.error + (data.details ? ': ' + JSON.stringify(data.details) : ''))
+        setEroare((data.error ?? 'Eroare Oblio') + (data.details ? ': ' + JSON.stringify(data.details) : ''))
         setLoading(false)
         return
       }
-      // Oblio returnează { data: [...] } sau direct array
-      const list: OblioFactura[] = Array.isArray(data) ? data : (data.data ?? data.invoices ?? [])
+      // Oblio returnează { data: [...] } sau direct array — protejăm mereu
+      let list: OblioFactura[] = []
+      if (Array.isArray(data)) list = data
+      else if (Array.isArray(data?.data)) list = data.data
+      else if (Array.isArray(data?.invoices)) list = data.invoices
+      else {
+        // Format necunoscut — afișăm raw pentru debug
+        setEroare('Format neașteptat Oblio: ' + JSON.stringify(data).slice(0, 300))
+        setLoading(false)
+        return
+      }
       setFacturi(list)
     } catch (e) {
       setEroare('Eroare conexiune: ' + String(e))

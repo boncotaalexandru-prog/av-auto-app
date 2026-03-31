@@ -653,7 +653,7 @@ function FacturarePageInner() {
         const vatPayer = client?.platitor_tva ?? false
 
         const oblioPayload = {
-          cif: oblioSettings.cui,
+          cif: oblioSettings.cui.replace(/^RO/i, '').trim(),
           issueDate: factura?.data_emitere ?? new Date().toISOString().slice(0, 10),
           dueDate: factura?.data_scadenta ?? '',
           seriesName: oblioSettings.serie_factura,

@@ -25,7 +25,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Construieste URL cu filtre
-    const params = new URLSearchParams({ cif: cui, limitPerPage: '100', orderBy: 'number', orderDir: 'desc' })
+    // Oblio vrea CUI fara prefix RO
+    const cuiCurat = cui.replace(/^RO/i, '').trim()
+    const params = new URLSearchParams({ cif: cuiCurat, limitPerPage: '100', orderBy: 'number', orderDir: 'desc' })
     if (issuedAfter) params.set('issuedAfter', issuedAfter)
     if (issuedBefore) params.set('issuedBefore', issuedBefore)
 
