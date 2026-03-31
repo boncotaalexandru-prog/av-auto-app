@@ -1208,12 +1208,11 @@ export default function OfertaPage() {
                       <span className="absolute right-3 top-2.5 text-sm text-gray-400 pointer-events-none">%</span>
                     </div>
                   </div>
-                  {/* Pret vanzare — blocat, calculat automat */}
+                  {/* Pret vanzare — editabil dupa ce ai achizitie, sincronizat cu adaos */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
-                      <label className="text-sm font-medium text-gray-900">
+                      <label className={`text-sm font-medium ${form.pret_achizitie > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
                         Pret vanzare
-                        <span className="ml-1 text-xs text-gray-400 font-normal">(calculat)</span>
                       </label>
                       {pretSpecialClient !== null && (
                         <button type="button"
@@ -1230,11 +1229,23 @@ export default function OfertaPage() {
                         </button>
                       )}
                     </div>
-                    <div className={`w-full px-3 py-2 border rounded-lg text-sm font-bold text-right cursor-not-allowed ${
-                      form.pret_vanzare > 0 ? 'bg-green-50 border-green-300 text-green-900' : 'bg-gray-100 border-gray-200 text-gray-400'
-                    }`}>
-                      {form.pret_vanzare > 0 ? form.pret_vanzare.toFixed(2) + ' RON' : '—'}
-                    </div>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={form.pret_vanzare || ''}
+                      disabled={form.pret_achizitie <= 0}
+                      onChange={e => {
+                        const vanz = parseFloat(e.target.value) || 0
+                        setForm(f => ({ ...f, pret_vanzare: vanz }))
+                        if (form.pret_achizitie > 0) {
+                          setAdaosInput(((vanz - form.pret_achizitie) / form.pret_achizitie * 100).toFixed(1))
+                        }
+                      }}
+                      placeholder={form.pret_achizitie > 0 ? '0.00' : '—'}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                        form.pret_achizitie <= 0 ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' :
+                        'border-blue-300 bg-blue-50 text-blue-900'
+                      }`}
+                    />
                   </div>
                 </div>
                 {form.pret_achizitie > 0 && form.pret_vanzare > 0 && (
