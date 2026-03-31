@@ -34,6 +34,7 @@ interface FacturaItem {
   client_denumire: string
   total: number
   nr_produse: number
+  nota_interna: string | null
 }
 
 interface StornoLinie {
@@ -109,7 +110,7 @@ function FacturarePageInner() {
 
     const { data: fRows } = await supabase
       .from('facturi')
-      .select('id, numar, data_emitere, status, client_id, clienti(denumire)')
+      .select('id, numar, data_emitere, status, client_id, nota_interna, clienti(denumire)')
       .order('numar', { ascending: false })
       .limit(200)
 
@@ -133,6 +134,7 @@ function FacturarePageInner() {
         client_denumire: client?.denumire ?? '—',
         total,
         nr_produse: linii.length,
+        nota_interna: f.nota_interna ?? null,
       }
     })
 
@@ -164,6 +166,8 @@ function FacturarePageInner() {
   const [salvand, setSalvand] = useState(false)
   const [modalWarning, setModalWarning] = useState(false)
   const [warningItems, setWarningItems] = useState<string[]>([])
+  const [editFacturaId, setEditFacturaId] = useState<string | null>(null)
+  const [notaInterna, setNotaInterna] = useState('')
 
   function resetNou() {
     setClientSearch(''); setClientId(null); setRanduri([])
@@ -172,6 +176,8 @@ function FacturarePageInner() {
     setDataEmitere(new Date().toISOString().slice(0, 10))
     setTermenPlata(0)
     setObservatii('')
+    setEditFacturaId(null)
+    setNotaInterna('')
     setView('nou')
   }
 
@@ -433,6 +439,83 @@ function FacturarePageInner() {
     setSalvand(true)
     const supabase = createClient()
 
+    if (editFacturaId) {
+      // Edit mode: restore old stock, delete old products, update factura, insert new products, deduct new stock
+
+      // Restore old stock
+      const { data: liniiVechi } = await supabase
+        .from('facturi_produse')
+        .select('stoc_id, cod, cantitate, produs_id')
+        .eq('factura_id', editFacturaId)
+
+      for (const linie of (liniiVechi ?? [])) {
+        if (linie.stoc_id) {
+          const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', linie.stoc_id).single()
+          if (s) await supabase.from('stoc').update({ cantitate: s.cantitate + linie.cantitate }).eq('id', linie.stoc_id)
+          continue
+        }
+        if (!linie.cod) continue
+        const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
+          .eq('produs_cod', linie.cod).order('updated_at', { ascending: true }).limit(1)
+        if (intrari?.length) {
+          await supabase.from('stoc').update({ cantitate: intrari[0].cantitate + linie.cantitate }).eq('id', intrari[0].id)
+        }
+      }
+
+      // Delete old products
+      await supabase.from('facturi_produse').delete().eq('factura_id', editFacturaId)
+
+      // Update factura
+      const scadenta = termenPlata > 0
+        ? new Date(new Date(dataEmitere).getTime() + termenPlata * 86400000).toISOString().slice(0, 10)
+        : null
+      await supabase.from('facturi').update({
+        client_id: clientId,
+        data_emitere: dataEmitere,
+        termen_plata: termenPlata || null,
+        data_scadenta: scadenta,
+        observatii: observatii.trim() || null,
+        nota_interna: notaInterna.trim() || null,
+      }).eq('id', editFacturaId)
+
+      // Insert new products
+      await supabase.from('facturi_produse').insert(randuri.map(r => ({
+        factura_id: editFacturaId,
+        produs_id: r.produs_id,
+        stoc_id: r.stoc_id,
+        nume_produs: r.nume_produs,
+        cod: r.cod || null,
+        producator: r.producator || null,
+        unitate: r.unitate || 'buc',
+        cantitate: r.cantitate,
+        pret_achizitie: r.pret_achizitie,
+        pret_vanzare: r.pret_vanzare,
+      })))
+
+      // Deduct new stock (same logic as normal)
+      for (const r of randuri) {
+        let deScazut = r.cantitate
+        if (r.stoc_id) {
+          const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', r.stoc_id).single()
+          if (s) await supabase.from('stoc').update({ cantitate: Math.max(0, s.cantitate - deScazut) }).eq('id', r.stoc_id)
+          continue
+        }
+        if (!r.cod) continue
+        const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
+          .gt('cantitate', 0).eq('produs_cod', r.cod).order('updated_at', { ascending: true })
+        for (const intrare of (intrari ?? [])) {
+          if (deScazut <= 0) break
+          const scade = Math.min(deScazut, intrare.cantitate)
+          await supabase.from('stoc').update({ cantitate: intrare.cantitate - scade }).eq('id', intrare.id)
+          deScazut -= scade
+        }
+      }
+
+      setSalvand(false)
+      setView('lista')
+      return
+    }
+
     // 1. Creaza factura
     const { data: { user } } = await supabase.auth.getUser()
     const scadenta = termenPlata > 0
@@ -444,6 +527,7 @@ function FacturarePageInner() {
       termen_plata: termenPlata || null,
       data_scadenta: scadenta,
       observatii: observatii.trim() || null,
+      nota_interna: notaInterna.trim() || null,
       status: 'nefinalizata',
       created_by: user?.id ?? null,
     }).select('id, numar').single()
@@ -531,6 +615,66 @@ function FacturarePageInner() {
     // Sterge factura (produsele se sterg automat prin CASCADE)
     await supabase.from('facturi').delete().eq('id', id)
     loadFacturi()
+  }
+
+  async function incarcaFacturaEdit(facturaId: string) {
+    const supabase = createClient()
+    const { data: factura } = await supabase
+      .from('facturi')
+      .select('id, client_id, data_emitere, termen_plata, observatii, nota_interna, clienti(denumire)')
+      .eq('id', facturaId).single()
+    if (!factura) return
+
+    const client = Array.isArray(factura.clienti) ? factura.clienti[0] : (factura.clienti as { denumire: string } | null)
+    setClientId(factura.client_id)
+    setClientSearch(client?.denumire ?? '')
+    setDataEmitere(factura.data_emitere)
+    setTermenPlata(factura.termen_plata ?? 1)
+    setObservatii(factura.observatii ?? '')
+    setNotaInterna(factura.nota_interna ?? '')
+
+    const { data: linii } = await supabase
+      .from('facturi_produse')
+      .select('id, produs_id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
+      .eq('factura_id', facturaId)
+    if (!linii) return
+
+    const randuriFilled: RandFactura[] = await Promise.all(linii.map(async (p) => {
+      const orParts: string[] = []
+      if (p.produs_id) orParts.push(`produs_id.eq.${p.produs_id}`)
+      if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
+      let optiuni: StocOptiune[] = []
+      if (orParts.length > 0) {
+        const { data: stocRows } = await supabase.from('stoc')
+          .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume')
+          .gt('cantitate', 0).or(orParts.join(','))
+          .order('updated_at', { ascending: true })
+        optiuni = (stocRows ?? []) as StocOptiune[]
+      }
+      const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
+      const idxInOptiuni = p.stoc_id ? optiuni.findIndex(o => o.id === p.stoc_id) : 0
+      const stocIdx = idxInOptiuni >= 0 ? idxInOptiuni : 0
+      const optSelec = optiuni[stocIdx]
+      return {
+        _key: Math.random().toString(36).slice(2),
+        produs_id: p.produs_id ?? null,
+        stoc_id: optSelec?.id ?? p.stoc_id ?? null,
+        nume_produs: p.nume_produs ?? '',
+        cod: p.cod ?? '',
+        producator: p.producator ?? '',
+        unitate: p.unitate ?? 'buc',
+        cantitate: p.cantitate ?? 1,
+        pret_achizitie: optSelec?.pret_achizitie ?? p.pret_achizitie ?? 0,
+        pret_vanzare: p.pret_vanzare ?? 0,
+        stoc_disponibil: totalDisponibil,
+        stoc_optiuni: optiuni,
+        stoc_idx: stocIdx,
+      }
+    }))
+
+    setRanduri(randuriFilled)
+    setEditFacturaId(facturaId)
+    setView('nou')
   }
 
   // ─── Storno functions ─────────────────────────────────────────────────────
@@ -789,7 +933,12 @@ function FacturarePageInner() {
                       <td className="px-5 py-3">
                         <span className="font-mono font-bold text-gray-900">#{f.numar}</span>
                       </td>
-                      <td className="px-5 py-3 font-medium text-gray-900">{f.client_denumire}</td>
+                      <td className="px-5 py-3 font-medium text-gray-900">
+                        {f.client_denumire}
+                        {f.nota_interna && (
+                          <p className="text-xs text-amber-700 font-normal mt-0.5">📌 {f.nota_interna}</p>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-gray-700">
                         {new Date(f.data_emitere).toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </td>
@@ -805,6 +954,11 @@ function FacturarePageInner() {
                       <td className="px-5 py-3 text-right flex items-center justify-end gap-2">
                         {f.status === 'nefinalizata' && (
                           <>
+                            <button
+                              onClick={() => incarcaFacturaEdit(f.id)}
+                              className="text-xs text-blue-600 font-semibold px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50">
+                              ✏ Editează
+                            </button>
                             <button
                               onClick={() => stergeNefinalizata(f.id)}
                               className="text-xs text-red-600 font-semibold px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50">
@@ -1111,6 +1265,20 @@ function FacturarePageInner() {
         />
       </div>
 
+      {/* Nota interna */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <label className="block text-sm font-semibold text-gray-900 mb-1">
+          Notă internă <span className="text-xs font-normal text-gray-500">(nu apare pe factură)</span>
+        </label>
+        <textarea
+          value={notaInterna}
+          onChange={e => setNotaInterna(e.target.value)}
+          rows={2}
+          placeholder="ex: Client plătitor lent, verificat stoc..."
+          className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none placeholder:text-gray-400 bg-amber-50"
+        />
+      </div>
+
       {/* Produse */}
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -1189,6 +1357,16 @@ function FacturarePageInner() {
                 <td className="px-4 py-3 text-right font-bold text-gray-900 text-base">{(total * 1.21).toFixed(2)} RON</td>
                 <td colSpan={3} />
               </tr>
+              {adaos !== null && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-1.5 text-right text-xs text-gray-600">Adaos total:</td>
+                  <td className="px-4 py-1.5 text-right text-sm font-bold" style={{ color: adaos >= 0 ? '#16a34a' : '#dc2626' }}>
+                    {adaos >= 0 ? '+' : ''}{adaos.toFixed(1)}%
+                    <span className="font-normal text-xs text-gray-500 ml-1">({(total - totalAch).toFixed(2)} RON)</span>
+                  </td>
+                  <td colSpan={3} />
+                </tr>
+              )}
             </tfoot>
           </table>
         )}

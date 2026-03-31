@@ -145,6 +145,7 @@ export default function OfertaPage() {
   const [stocOptiuneIdx, setStocOptiuneIdx] = useState<number>(0)
   const [stocMap, setStocMap] = useState<Record<string, number>>({})
   const [pretSpecialClient, setPretSpecialClient] = useState<number | null>(null)
+  const [editRandId, setEditRandId] = useState<string | null>(null)
   const prodRef = useRef<HTMLDivElement>(null)
   const furnRef = useRef<HTMLDivElement>(null)
 
@@ -316,12 +317,62 @@ export default function OfertaPage() {
     setEditProducatorModal(false)
     setStocOptiuni([])
     setStocOptiuneIdx(0)
+    setEditRandId(null)
+  }
+
+  function deschideEditRand(p: OfertaProdus) {
+    setEditRandId(p.id)
+    setForm({
+      produs_id: p.produs_id ?? null,
+      stoc_id: p.stoc_id ?? null,
+      nume_produs: p.nume_produs,
+      cod: p.cod ?? '',
+      cantitate: p.cantitate,
+      unitate: p.unitate ?? '',
+      pret_achizitie: p.pret_achizitie,
+      pret_vanzare: p.pret_vanzare,
+      furnizor_id: p.furnizor_id ?? null,
+      furnizor_label: p.furnizori?.denumire ?? '',
+      disponibil: p.disponibil,
+      producator: p.producator ?? '',
+      ora_ridicare: (p as unknown as { ora_ridicare: string | null }).ora_ridicare ?? '',
+      data_livrare: (p as unknown as { data_livrare: string | null }).data_livrare ?? '',
+    })
+    setProdSearch(p.nume_produs)
+    setFurnizorSearch(p.furnizori?.denumire ?? '')
+    setStocOptiuni([])
+    setStocOptiuneIdx(0)
+    setModal(true)
   }
 
   async function adaugaProdus() {
     if (!form.nume_produs.trim()) return
     setSaving(true)
     const supabase = createClient()
+
+    if (editRandId) {
+      // Edit mode: UPDATE existing oferta_produs
+      const { data } = await supabase.from('oferte_produse').update({
+        produs_id: form.produs_id,
+        stoc_id: form.stoc_id,
+        nume_produs: form.nume_produs,
+        cod: form.cod || null,
+        cantitate: form.cantitate,
+        unitate: form.unitate || null,
+        pret_achizitie: form.pret_achizitie,
+        pret_vanzare: form.pret_vanzare,
+        furnizor_id: form.furnizor_id,
+        disponibil: form.disponibil,
+        producator: form.producator || null,
+        ora_ridicare: form.ora_ridicare || null,
+        data_livrare: form.data_livrare || null,
+      }).eq('id', editRandId).select('*, furnizori(denumire)').single()
+      if (data) setProduse(prev => prev.map(p => p.id === editRandId ? data as OfertaProdus : p))
+      setSaving(false)
+      closeModal()
+      return
+    }
+
     const { data } = await supabase.from('oferte_produse').insert({
       oferta_id: id,
       produs_id: form.produs_id,
@@ -633,9 +684,14 @@ export default function OfertaPage() {
                   </td>
                   {oferta.status === 'in_lucru' && (
                     <td className="px-4 py-2.5 text-right">
-                      <button onClick={() => stergeRand(p.id)} className="text-xs text-red-600 hover:text-red-800">
-                        Sterge
-                      </button>
+                      <div className="flex items-center gap-2 justify-end">
+                        <button onClick={() => deschideEditRand(p)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                          ✏ Editează
+                        </button>
+                        <button onClick={() => stergeRand(p.id)} className="text-xs text-red-600 hover:text-red-800">
+                          Sterge
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -664,6 +720,16 @@ export default function OfertaPage() {
                   <td className="px-4 py-2.5 text-right font-bold text-gray-900 text-base">{(totalGeneral * 1.21).toFixed(2)} RON</td>
                   {oferta.status === 'in_lucru' && <td />}
                 </tr>
+                {adaosTotal !== null && (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-1.5 text-right text-xs text-gray-600">Adaos total:</td>
+                    <td colSpan={3} className="px-4 py-1.5 text-right text-sm font-bold" style={{ color: adaosTotal >= 0 ? '#16a34a' : '#dc2626' }}>
+                      {adaosTotal >= 0 ? '+' : ''}{adaosTotal.toFixed(1)}%
+                      <span className="font-normal text-xs text-gray-500 ml-1">({(totalGeneral - totalAchizitie).toFixed(2)} RON)</span>
+                    </td>
+                    {oferta.status === 'in_lucru' && <td />}
+                  </tr>
+                )}
               </tfoot>
             )}
           </table>
@@ -864,7 +930,7 @@ export default function OfertaPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col" style={{ height: '92vh', overflowY: 'auto' }}>
             {/* Header modal */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
-              <h3 className="text-lg font-bold text-gray-900">Adauga Produs</h3>
+              <h3 className="text-lg font-bold text-gray-900">{editRandId ? 'Editează Produs' : 'Adauga Produs'}</h3>
               <button onClick={closeModal} className="text-gray-600 hover:text-gray-900 text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100">
                 ✕
               </button>
@@ -1209,7 +1275,7 @@ export default function OfertaPage() {
                 disabled={saving || !form.nume_produs.trim()}
                 className="w-full py-3 bg-gray-900 hover:bg-gray-700 text-white font-semibold rounded-lg disabled:opacity-40 transition-colors"
               >
-                {saving ? 'Se salveaza...' : 'Adauga Produs'}
+                {saving ? 'Se salveaza...' : editRandId ? 'Salvează modificările' : 'Adauga Produs'}
               </button>
             </div>
           </div>
