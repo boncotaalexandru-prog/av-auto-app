@@ -90,16 +90,36 @@ export default function IncasariPage() {
         return
       }
       // Oblio returnează { data: [...] } sau direct array — protejăm mereu
-      let list: OblioFactura[] = []
-      if (Array.isArray(data)) list = data
-      else if (Array.isArray(data?.data)) list = data.data
-      else if (Array.isArray(data?.invoices)) list = data.invoices
+      let raw: unknown[] = []
+      if (Array.isArray(data)) raw = data
+      else if (Array.isArray(data?.data)) raw = data.data
+      else if (Array.isArray(data?.invoices)) raw = data.invoices
       else {
-        // Format necunoscut — afișăm raw pentru debug
         setEroare('Format neașteptat Oblio: ' + JSON.stringify(data).slice(0, 300))
         setLoading(false)
         return
       }
+      // Filtrăm null/undefined și normalizăm câmpurile
+      const list: OblioFactura[] = raw
+        .filter(Boolean)
+        .map((item: unknown) => {
+          const f = (item ?? {}) as Record<string, unknown>
+          const cl = (f.client ?? {}) as Record<string, unknown>
+          return {
+            id: String(f.id ?? ''),
+            seriesName: String(f.seriesName ?? ''),
+            number: String(f.number ?? ''),
+            issueDate: String(f.issueDate ?? ''),
+            dueDate: String(f.dueDate ?? ''),
+            total: String(f.total ?? '0'),
+            totalVat: String(f.totalVat ?? '0'),
+            collected: String(f.collected ?? '0'),
+            canceled: String(f.canceled ?? '0'),
+            storno: String(f.storno ?? '0'),
+            link: String(f.link ?? ''),
+            client: { name: String(cl.name ?? '—'), cif: String(cl.cif ?? '') },
+          } as OblioFactura
+        })
       setFacturi(list)
     } catch (e) {
       setEroare('Eroare conexiune: ' + String(e))
