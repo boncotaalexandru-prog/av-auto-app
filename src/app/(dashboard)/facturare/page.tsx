@@ -36,6 +36,8 @@ interface FacturaItem {
   nr_produse: number
   nota_interna: string | null
   oblio_link: string | null
+  oblio_serie: string | null
+  oblio_numar: number | null
 }
 
 interface OblioSettings {
@@ -131,7 +133,7 @@ function FacturarePageInner() {
 
     const { data: fRows } = await supabase
       .from('facturi')
-      .select('id, numar, data_emitere, status, client_id, nota_interna, oblio_link, clienti(denumire)')
+      .select('id, numar, data_emitere, status, client_id, nota_interna, oblio_link, oblio_serie, oblio_numar, clienti(denumire)')
       .order('numar', { ascending: false })
       .limit(200)
 
@@ -157,6 +159,8 @@ function FacturarePageInner() {
         nr_produse: linii.length,
         nota_interna: f.nota_interna ?? null,
         oblio_link: (f as Record<string, unknown>).oblio_link as string | null ?? null,
+        oblio_serie: (f as Record<string, unknown>).oblio_serie as string | null ?? null,
+        oblio_numar: (f as Record<string, unknown>).oblio_numar as number | null ?? null,
       }
     })
 
@@ -671,12 +675,11 @@ function FacturarePageInner() {
           },
           products: (produse ?? []).map(p => ({
             name: p.nume_produs,
-            code: p.cod ?? '',
             measuringUnit: p.unitate || 'buc',
             quantity: p.cantitate,
             price: p.pret_vanzare,
             vatName: vatPayer ? 'Normala' : 'Scutit',
-            vatPercentage: vatPayer ? 19 : 0,
+            vatPercentage: vatPayer ? 21 : 0,
             isDiscount: false,
           })),
         }
