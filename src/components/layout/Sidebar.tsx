@@ -15,14 +15,14 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard',        href: '/dashboard',        icon: '⊞' },
-  { label: 'Produse',          href: '/produse',          icon: '📦' },
-  { label: 'Furnizori',        href: '/furnizori',        icon: '🏭' },
-  { label: 'Oferte',           href: '/oferte',           icon: '📋' },
   { label: 'Facturare',        href: '/facturare',        icon: '🧾' },
-  { label: 'Încasări',         href: '/incasari',         icon: '💰', adminOnly: true },
+  { label: 'Oferte',           href: '/oferte',           icon: '📋' },
   { label: 'Marfa de ridicat', href: '/marfa-de-ridicat', icon: '🚛' },
   { label: 'Gestiune',         href: '/gestiune',         icon: '🏪' },
   { label: 'Clienti',          href: '/clienti',          icon: '👥' },
+  { label: 'Produse',          href: '/produse',          icon: '📦' },
+  { label: 'Furnizori',        href: '/furnizori',        icon: '🏭' },
+  { label: 'Încasări',         href: '/incasari',         icon: '💰', adminOnly: true },
   { label: 'Rapoarte',         href: '/rapoarte',         icon: '📊', adminOnly: true },
   { label: 'Setari',           href: '/setari',           icon: '⚙️', adminOnly: true },
 ]
