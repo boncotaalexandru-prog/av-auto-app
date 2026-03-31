@@ -95,6 +95,15 @@ const TVA = 0.21
 
 export default function GestiunePage() {
   const [tab, setTab] = useState<'stoc' | 'nir'>('stoc')
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // Modal Ajustare Stoc (admin only)
+  const [modalAjustare, setModalAjustare] = useState(false)
+  const [ajustareStocId, setAjustareStocId] = useState<string | null>(null)
+  const [ajustareNume, setAjustareNume] = useState('')
+  const [ajustareCantitate, setAjustareCantitate] = useState('')
+  const [ajustareMotiv, setAjustareMotiv] = useState('')
+  const [salvandAjustare, setSalvandAjustare] = useState(false)
 
   // Stoc
   const [stoc, setStoc] = useState<StocItem[]>([])
@@ -141,7 +150,15 @@ export default function GestiunePage() {
 
   // ─── Load ──────────────────────────────────────────────────────────────────
 
-  useEffect(() => { incarcaStoc() }, [])
+  useEffect(() => {
+    incarcaStoc()
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase.from('profiles').select('role').eq('id', user.id).single()
+        .then(({ data }) => { if (data?.role === 'admin') setIsAdmin(true) })
+    })
+  }, [])
   useEffect(() => { if (tab === 'nir') incarcaNir() }, [tab])
 
   async function incarcaStoc() {
@@ -556,6 +573,21 @@ export default function GestiunePage() {
 
   // ─── Filtrare stoc ───────────────────────────────────────────────────────
 
+  async function salveazaAjustare() {
+    if (!ajustareStocId) return
+    const delta = parseFloat(ajustareCantitate)
+    if (isNaN(delta) || delta === 0) { alert('Introdu o cantitate diferită de 0 (pozitiv = adaugi, negativ = scazi)'); return }
+    setSalvandAjustare(true)
+    const supabase = createClient()
+    const item = stoc.find(s => s.id === ajustareStocId)
+    if (!item) return
+    const nouaCantitate = item.cantitate + delta
+    await supabase.from('stoc').update({ cantitate: nouaCantitate, updated_at: new Date().toISOString() }).eq('id', ajustareStocId)
+    setSalvandAjustare(false)
+    setModalAjustare(false)
+    incarcaStoc()
+  }
+
   const stocFiltrat = stoc.filter(s => {
     if (s.cantitate <= 0) return false
     if (!cautareStoc.trim()) return true
@@ -628,6 +660,7 @@ export default function GestiunePage() {
                   <th className="text-right px-4 py-2.5 text-gray-900 font-medium">Preț listă (fără TVA)</th>
                   <th className="text-left px-4 py-2.5 text-gray-900 font-medium">Furnizor</th>
                   <th className="text-right px-4 py-2.5 text-gray-900 font-medium">Valoare stoc</th>
+                  {isAdmin && <th className="px-2 py-2.5"></th>}
                 </tr>
               </thead>
               <tbody>
@@ -652,6 +685,15 @@ export default function GestiunePage() {
                     <td className="px-4 py-2.5 text-right font-semibold text-gray-900">
                       {(s.cantitate * s.pret_achizitie).toFixed(2)} RON
                     </td>
+                    {isAdmin && (
+                      <td className="px-2 py-2.5 text-center">
+                        <button
+                          onClick={() => { setAjustareStocId(s.id); setAjustareNume(s.produs_nume); setAjustareCantitate(''); setAjustareMotiv(''); setModalAjustare(true) }}
+                          className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700 hover:bg-orange-200 font-medium"
+                          title="Ajustare manuală stoc"
+                        >±</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1085,6 +1127,52 @@ export default function GestiunePage() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Ajustare Stoc — admin only */}
+      {modalAjustare && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Ajustare manuală stoc</h2>
+            <p className="text-sm text-gray-500 mb-4">{ajustareNume}</p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Cantitate <span className="text-gray-400 font-normal">(pozitiv = adaugi, negativ = scazi)</span>
+              </label>
+              <input
+                type="number" step="1"
+                value={ajustareCantitate}
+                onChange={e => setAjustareCantitate(e.target.value)}
+                placeholder="ex: 5 sau -3"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                autoFocus
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Motiv <span className="text-gray-400 font-normal">(opțional)</span></label>
+              <input
+                type="text"
+                value={ajustareMotiv}
+                onChange={e => setAjustareMotiv(e.target.value)}
+                placeholder="ex: inventar, pierdere, corecție..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setModalAjustare(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Anulează
+              </button>
+              <button onClick={salveazaAjustare} disabled={salvandAjustare || !ajustareCantitate}
+                className="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+                {salvandAjustare ? 'Se salvează...' : 'Salvează ajustarea'}
+              </button>
             </div>
           </div>
         </div>
