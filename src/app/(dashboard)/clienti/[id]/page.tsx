@@ -34,9 +34,11 @@ interface Masina {
 
 interface PretSpecial {
   id: string
+  produs_id: string | null
   produs_cod: string | null
   produs_nume: string
   pret_vanzare: number
+  pret_catalog: number | null
   updated_at: string
 }
 
@@ -72,9 +74,9 @@ export default function ClientPage() {
 
   // Preturi speciale — adaugare manuala
   const [addingPret, setAddingPret] = useState(false)
-  const [pretForm, setPretForm] = useState({ produs_cod: '', produs_nume: '', pret_vanzare: '' })
+  const [pretForm, setPretForm] = useState({ produs_id: '', produs_cod: '', produs_nume: '', pret_vanzare: '', pret_catalog: '' })
   const [prodSearch, setProdSearch] = useState('')
-  const [prodResults, setProdResults] = useState<{ id: string; cod: string | null; nume: string }[]>([])
+  const [prodResults, setProdResults] = useState<{ id: string; cod: string | null; nume: string; pret: number | null }[]>([])
   const [showProdDrop, setShowProdDrop] = useState(false)
   const [savingPret, setSavingPret] = useState(false)
 
@@ -87,7 +89,7 @@ export default function ClientPage() {
       supabase.from('clienti_masini').select('*').eq('client_id', id).order('created_at'),
       supabase
         .from('clienti_preturi')
-        .select('id, produs_cod, produs_nume, pret_vanzare, updated_at')
+        .select('id, produs_id, produs_cod, produs_nume, pret_vanzare, pret_catalog, updated_at')
         .eq('client_id', id)
         .order('produs_nume'),
     ]).then(([{ data: c }, { data: m }, { data: p }]) => {
@@ -138,17 +140,25 @@ export default function ClientPage() {
 
   async function cautaProdus(q: string) {
     setProdSearch(q)
-    setPretForm(f => ({ ...f, produs_nume: q, produs_cod: '' }))
+    setPretForm(f => ({ ...f, produs_id: '', produs_cod: '', produs_nume: q, pret_catalog: '' }))
     if (q.trim().length < 2) { setProdResults([]); setShowProdDrop(false); return }
     const { data } = await createClient().from('produse')
-      .select('id, cod, nume').ilike('nume', `%${q}%`).limit(8)
+      .select('id, cod, nume, pret')
+      .or(`nume.ilike.%${q}%,cod.ilike.%${q}%`)
+      .limit(10)
     setProdResults(data ?? [])
     setShowProdDrop(true)
   }
 
-  function selectProdPret(p: { id: string; cod: string | null; nume: string }) {
+  function selectProdPret(p: { id: string; cod: string | null; nume: string; pret: number | null }) {
     setProdSearch(p.nume)
-    setPretForm(f => ({ ...f, produs_cod: p.cod ?? '', produs_nume: p.nume }))
+    setPretForm(f => ({
+      ...f,
+      produs_id: p.id,
+      produs_cod: p.cod ?? '',
+      produs_nume: p.nume,
+      pret_catalog: p.pret?.toString() ?? '',
+    }))
     setProdResults([])
     setShowProdDrop(false)
   }
@@ -159,19 +169,24 @@ export default function ClientPage() {
     const supabase = createClient()
     const row = {
       client_id: id,
+      produs_id: pretForm.produs_id || null,
       produs_cod: pretForm.produs_cod || null,
       produs_nume: pretForm.produs_nume,
       pret_vanzare: parseFloat(pretForm.pret_vanzare),
+      pret_catalog: pretForm.pret_catalog ? parseFloat(pretForm.pret_catalog) : null,
       updated_at: new Date().toISOString(),
     }
     // delete + insert (upsert cu partial index nu merge in Supabase)
-    if (row.produs_cod) {
+    if (row.produs_id) {
+      await supabase.from('clienti_preturi').delete()
+        .eq('client_id', id).eq('produs_id', row.produs_id)
+    } else if (row.produs_cod) {
       await supabase.from('clienti_preturi').delete()
         .eq('client_id', id).eq('produs_cod', row.produs_cod)
     }
     const { data, error } = await supabase.from('clienti_preturi')
       .insert(row)
-      .select('id, produs_cod, produs_nume, pret_vanzare, updated_at')
+      .select('id, produs_id, produs_cod, produs_nume, pret_vanzare, pret_catalog, updated_at')
       .single()
     if (error) {
       console.error('[PretSpecial] Eroare save:', error)
@@ -186,7 +201,7 @@ export default function ClientPage() {
         return [...prev, data as PretSpecial]
       })
     }
-    setPretForm({ produs_cod: '', produs_nume: '', pret_vanzare: '' })
+    setPretForm({ produs_id: '', produs_cod: '', produs_nume: '', pret_vanzare: '', pret_catalog: '' })
     setProdSearch('')
     setAddingPret(false)
     setSavingPret(false)
@@ -455,26 +470,47 @@ export default function ClientPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
                 {showProdDrop && prodResults.length > 0 && (
-                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                     {prodResults.map(p => (
                       <button key={p.id} onClick={() => selectProdPret(p)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-b border-gray-100 last:border-0">
-                        <span className="font-medium text-gray-900">{p.nume}</span>
-                        {p.cod && <span className="text-gray-500 ml-2 font-mono text-xs">{p.cod}</span>}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-b border-gray-100 last:border-0 flex items-center justify-between gap-2">
+                        <span>
+                          <span className="font-medium text-gray-900">{p.nume}</span>
+                          {p.cod && <span className="text-gray-500 ml-2 font-mono text-xs">{p.cod}</span>}
+                        </span>
+                        {p.pret != null && (
+                          <span className="text-xs text-gray-500 whitespace-nowrap">catalog: {p.pret.toFixed(2)} RON</span>
+                        )}
                       </button>
                     ))}
                   </div>
                 )}
+                {pretForm.produs_id && pretForm.pret_catalog && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Preț catalog: <strong className="text-gray-800">{parseFloat(pretForm.pret_catalog).toFixed(2)} RON</strong>
+                  </p>
+                )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Preț vânzare (RON, fără TVA)</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Preț special (RON, fără TVA)</label>
                 <input
                   type="number" min={0} step={0.01}
                   value={pretForm.pret_vanzare}
                   onChange={e => setPretForm(f => ({ ...f, pret_vanzare: e.target.value }))}
                   placeholder="0.00"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-3 py-2 border border-purple-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
                 />
+                {pretForm.pret_catalog && pretForm.pret_vanzare && (() => {
+                  const catalog = parseFloat(pretForm.pret_catalog)
+                  const special = parseFloat(pretForm.pret_vanzare)
+                  if (!catalog || !special) return null
+                  const diff = ((special - catalog) / catalog) * 100
+                  return (
+                    <p className={`mt-1 text-xs font-semibold ${diff < 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                      {diff < 0 ? '▼' : '▲'} {Math.abs(diff).toFixed(1)}% față de catalog ({(special - catalog).toFixed(2)} RON)
+                    </p>
+                  )
+                })()}
               </div>
             </div>
             <div className="flex justify-end">
@@ -496,30 +532,46 @@ export default function ClientPage() {
           <div className="divide-y divide-gray-200">
             <div className="grid grid-cols-12 gap-2 pb-2 text-xs font-bold text-gray-600 uppercase tracking-wide">
               <span className="col-span-2">Cod</span>
-              <span className="col-span-6">Produs</span>
+              <span className="col-span-4">Produs</span>
+              <span className="col-span-2 text-right">Catalog</span>
               <span className="col-span-2 text-right">Preț special</span>
               <span className="col-span-1 text-right">Actualizat</span>
               <span className="col-span-1"></span>
             </div>
-            {preturi.map(p => (
-              <div key={p.id} className="grid grid-cols-12 gap-2 py-3 items-center" style={{ color: '#111827' }}>
-                <span className="col-span-2 font-mono text-xs font-semibold" style={{ color: '#374151' }}>{p.produs_cod || '—'}</span>
-                <span className="col-span-6 text-sm font-semibold" style={{ color: '#111827' }}>{p.produs_nume}</span>
-                <span className="col-span-2 text-right text-sm font-bold" style={{ color: '#6d28d9' }}>{p.pret_vanzare.toFixed(2)} RON</span>
-                <span className="col-span-1 text-right text-xs font-medium" style={{ color: '#374151' }}>{new Date(p.updated_at).toLocaleDateString('ro-RO')}</span>
-                <div className="col-span-1 flex justify-end">
-                  <button
-                    onClick={async () => {
-                      await createClient().from('clienti_preturi').delete().eq('id', p.id)
-                      setPreturi(prev => prev.filter(x => x.id !== p.id))
-                    }}
-                    className="text-xs text-red-500 hover:text-red-700 font-medium"
-                  >
-                    Șterge
-                  </button>
+            {preturi.map(p => {
+              const reducere = p.pret_catalog && p.pret_catalog > 0
+                ? ((p.pret_vanzare - p.pret_catalog) / p.pret_catalog) * 100
+                : null
+              return (
+                <div key={p.id} className="grid grid-cols-12 gap-2 py-3 items-center" style={{ color: '#111827' }}>
+                  <span className="col-span-2 font-mono text-xs font-semibold" style={{ color: '#374151' }}>{p.produs_cod || '—'}</span>
+                  <span className="col-span-4 text-sm font-semibold" style={{ color: '#111827' }}>{p.produs_nume}</span>
+                  <span className="col-span-2 text-right text-xs text-gray-500">
+                    {p.pret_catalog != null ? p.pret_catalog.toFixed(2) + ' RON' : '—'}
+                  </span>
+                  <span className="col-span-2 text-right">
+                    <span className="text-sm font-bold" style={{ color: '#6d28d9' }}>{p.pret_vanzare.toFixed(2)} RON</span>
+                    {reducere !== null && (
+                      <span className={`block text-xs font-semibold ${reducere < 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        {reducere < 0 ? '▼' : '▲'} {Math.abs(reducere).toFixed(1)}%
+                      </span>
+                    )}
+                  </span>
+                  <span className="col-span-1 text-right text-xs font-medium" style={{ color: '#374151' }}>{new Date(p.updated_at).toLocaleDateString('ro-RO')}</span>
+                  <div className="col-span-1 flex justify-end">
+                    <button
+                      onClick={async () => {
+                        await createClient().from('clienti_preturi').delete().eq('id', p.id)
+                        setPreturi(prev => prev.filter(x => x.id !== p.id))
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700 font-medium"
+                    >
+                      Șterge
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : null}
       </div>
