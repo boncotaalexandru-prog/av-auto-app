@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 
 interface Ridicare {
   id: string
-  oferta_id: string
+  oferta_id: string | null
   client_nume: string | null
   nume_produs: string
   producator: string | null
@@ -68,14 +68,36 @@ export default function MarfaDeRidicatPage() {
   const [afiseazaRidicate, setAfiseazaRidicate] = useState(false)
   const [undoItem, setUndoItem] = useState<Ridicare | null>(null)
   const undoTimer = useState<ReturnType<typeof setTimeout> | null>(null)
+  const [modalManual, setModalManual] = useState(false)
+  const [formManual, setFormManual] = useState({
+    data_livrare: new Date().toISOString().split('T')[0],
+    ora_ridicare: '',
+    furnizor_nume: '',
+    furnizor_id: null as string | null,
+    nume_produs: '',
+    cantitate: 1,
+    unitate: 'buc',
+    client_nume: '',
+  })
+  const [salvandManual, setSalvandManual] = useState(false)
+  const [furnizoriManual, setFurnizoriManual] = useState<{id: string; denumire: string}[]>([])
+  const [showFurnManual, setShowFurnManual] = useState(false)
+  const [furnSearchManual, setFurnSearchManual] = useState('')
 
   useEffect(() => { incarca() }, [])
+
+  useEffect(() => {
+    if (!showFurnManual) return
+    let q = createClient().from('furnizori').select('id, denumire').order('denumire').limit(20)
+    if (furnSearchManual.trim()) q = q.ilike('denumire', `%${furnSearchManual}%`)
+    q.then(({ data }) => setFurnizoriManual((data as {id: string; denumire: string}[]) ?? []))
+  }, [furnSearchManual, showFurnManual])
 
   async function incarca() {
     const { data, error } = await createClient()
       .from('ridicari')
       .select('*, oferte(numar)')
-      .not('furnizor_id', 'is', null)
+      .or('furnizor_id.not.is.null,oferta_id.is.null')
       .order('data_livrare', { ascending: true })
       .order('created_at', { ascending: true })
     if (error) console.error('[Ridicari] Eroare query:', error)
@@ -103,6 +125,38 @@ export default function MarfaDeRidicatPage() {
     } else {
       setUndoItem(null)
     }
+  }
+
+  async function salveazaManual() {
+    if (!formManual.nume_produs.trim()) return
+    setSalvandManual(true)
+    await createClient().from('ridicari').insert({
+      oferta_id: null,
+      client_nume: formManual.client_nume.trim() || null,
+      nume_produs: formManual.nume_produs.trim(),
+      cantitate: formManual.cantitate,
+      unitate: formManual.unitate || 'buc',
+      furnizor_id: formManual.furnizor_id,
+      furnizor_nume: formManual.furnizor_nume.trim() || null,
+      ora_ridicare: formManual.ora_ridicare.trim() || null,
+      data_livrare: formManual.data_livrare || null,
+      ridicat: false,
+    })
+    setSalvandManual(false)
+    setModalManual(false)
+    setFormManual({
+      data_livrare: new Date().toISOString().split('T')[0],
+      ora_ridicare: '', furnizor_nume: '', furnizor_id: null,
+      nume_produs: '', cantitate: 1, unitate: 'buc', client_nume: '',
+    })
+    setFurnSearchManual('')
+    incarca()
+  }
+
+  async function stergeManual(id: string) {
+    if (!confirm('Ștergi această ridicare manuală?')) return
+    await createClient().from('ridicari').delete().eq('id', id)
+    setRidicari(prev => prev.filter(r => r.id !== id))
   }
 
   async function anuleazaRidicat() {
@@ -134,10 +188,19 @@ export default function MarfaDeRidicatPage() {
             </p>
           )}
         </div>
-        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-900 select-none">
-          <input type="checkbox" checked={afiseazaRidicate} onChange={e => setAfiseazaRidicate(e.target.checked)} className="w-4 h-4" />
-          Afișează și ridicatele
-        </label>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setModalManual(true)}
+            className="px-4 py-2 text-sm font-semibold text-white rounded-lg"
+            style={{ backgroundColor: '#0f172a' }}
+          >
+            + Adaugă ridicare
+          </button>
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-900 select-none">
+            <input type="checkbox" checked={afiseazaRidicate} onChange={e => setAfiseazaRidicate(e.target.checked)} className="w-4 h-4" />
+            Afișează și ridicatele
+          </label>
+        </div>
       </div>
 
       {loading ? (
@@ -216,6 +279,15 @@ export default function MarfaDeRidicatPage() {
                               ✓ {new Date(item.ridicat_la).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           )}
+                          {!item.oferta_id && !item.ridicat && (
+                            <button
+                              onClick={() => stergeManual(item.id)}
+                              className="text-xs text-red-400 hover:text-red-600 shrink-0"
+                              title="Șterge"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -224,6 +296,101 @@ export default function MarfaDeRidicatPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal adaugă ridicare manuală */}
+      {modalManual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">Adaugă ridicare manuală</h3>
+              <button onClick={() => setModalManual(false)} className="text-gray-600 hover:text-gray-900 text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100">✕</button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {/* Data + Ora */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Când (dată)</label>
+                  <input type="date" value={formManual.data_livrare}
+                    onChange={e => setFormManual(f => ({ ...f, data_livrare: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Ora (opțional)</label>
+                  <input type="text" placeholder="ex: 10:00" value={formManual.ora_ridicare}
+                    onChange={e => setFormManual(f => ({ ...f, ora_ridicare: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              {/* De unde (furnizor) */}
+              <div className="relative">
+                <label className="block text-xs font-medium text-gray-700 mb-1">De unde (furnizor) <span className="text-red-500">*</span></label>
+                <input type="text" placeholder="Caută sau scrie furnizor..."
+                  value={furnSearchManual}
+                  onChange={e => { setFurnSearchManual(e.target.value); setFormManual(f => ({ ...f, furnizor_nume: e.target.value, furnizor_id: null })); setShowFurnManual(true) }}
+                  onFocus={() => setShowFurnManual(true)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showFurnManual && furnizoriManual.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-36 overflow-y-auto">
+                    {furnizoriManual.map(f => (
+                      <button key={f.id} onClick={() => { setFormManual(fm => ({ ...fm, furnizor_id: f.id, furnizor_nume: f.denumire })); setFurnSearchManual(f.denumire); setShowFurnManual(false) }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-900 hover:bg-blue-50 border-b border-gray-100 last:border-0">
+                        {f.denumire}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Ce (produs) */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Ce (produs) <span className="text-red-500">*</span></label>
+                <input type="text" placeholder="Denumire produs..." value={formManual.nume_produs}
+                  onChange={e => setFormManual(f => ({ ...f, nume_produs: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {/* Cantitate + UM */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Cantitate</label>
+                  <input type="number" min="1" step="1" value={formManual.cantitate}
+                    onChange={e => setFormManual(f => ({ ...f, cantitate: parseFloat(e.target.value) || 1 }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">UM</label>
+                  <input type="text" value={formManual.unitate}
+                    onChange={e => setFormManual(f => ({ ...f, unitate: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              {/* Pentru cine */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Pentru cine (client)</label>
+                <input type="text" placeholder="Nume client..." value={formManual.client_nume}
+                  onChange={e => setFormManual(f => ({ ...f, client_nume: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="px-6 pb-6 flex gap-3 justify-end">
+              <button onClick={() => setModalManual(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+                Anulează
+              </button>
+              <button onClick={salveazaManual} disabled={salvandManual || !formManual.nume_produs.trim() || !formManual.furnizor_nume.trim()}
+                className="px-5 py-2 text-white text-sm font-semibold rounded-lg disabled:opacity-40"
+                style={{ backgroundColor: '#0f172a' }}>
+                {salvandManual ? 'Se salvează...' : '+ Adaugă'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
