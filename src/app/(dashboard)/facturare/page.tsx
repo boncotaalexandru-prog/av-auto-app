@@ -35,6 +35,14 @@ interface FacturaItem {
   total: number
   nr_produse: number
   nota_interna: string | null
+  oblio_link: string | null
+}
+
+interface OblioSettings {
+  oblio_email: string
+  oblio_secret: string
+  cui: string
+  serie_factura: string
 }
 
 interface StornoLinie {
@@ -84,6 +92,19 @@ function FacturarePageInner() {
   const searchParams = useSearchParams()
   const [view, setView] = useState<'lista' | 'nou' | 'storno'>('lista')
 
+  // ─── Setari Oblio ─────────────────────────────────────────────────────────
+  const [oblioSettings, setOblioSettings] = useState<OblioSettings | null>(null)
+  const [emitandId, setEmitandId] = useState<string | null>(null)
+
+  useEffect(() => {
+    createClient()
+      .from('settings')
+      .select('oblio_email, oblio_secret, cui, serie_factura')
+      .eq('id', 1)
+      .single()
+      .then(({ data }) => { if (data) setOblioSettings(data as OblioSettings) })
+  }, [])
+
   // ─── Lista facturi ────────────────────────────────────────────────────────
   const [facturi, setFacturi] = useState<FacturaItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -110,7 +131,7 @@ function FacturarePageInner() {
 
     const { data: fRows } = await supabase
       .from('facturi')
-      .select('id, numar, data_emitere, status, client_id, nota_interna, clienti(denumire)')
+      .select('id, numar, data_emitere, status, client_id, nota_interna, oblio_link, clienti(denumire)')
       .order('numar', { ascending: false })
       .limit(200)
 
@@ -135,6 +156,7 @@ function FacturarePageInner() {
         total,
         nr_produse: linii.length,
         nota_interna: f.nota_interna ?? null,
+        oblio_link: (f as Record<string, unknown>).oblio_link as string | null ?? null,
       }
     })
 
@@ -600,8 +622,98 @@ function FacturarePageInner() {
   }
 
   async function emiteFactura(id: string) {
+    setEmitandId(id)
     const supabase = createClient()
+
+    // Încearcă trimitere Oblio dacă sunt credențiale configurate
+    if (oblioSettings?.oblio_email && oblioSettings?.oblio_secret && oblioSettings?.cui && oblioSettings?.serie_factura) {
+      try {
+        // Încarcă factura completă
+        const { data: factura } = await supabase
+          .from('facturi')
+          .select('id, numar, data_emitere, data_scadenta, observatii, nota_interna, client_id')
+          .eq('id', id).single()
+
+        // Încarcă datele clientului
+        const { data: client } = await supabase
+          .from('clienti')
+          .select('denumire, cod_fiscal, reg_com, adresa, oras, judet, tara, telefon, email, platitor_tva')
+          .eq('id', factura?.client_id).single()
+
+        // Încarcă produsele facturii
+        const { data: produse } = await supabase
+          .from('facturi_produse')
+          .select('nume_produs, cod, unitate, cantitate, pret_vanzare')
+          .eq('factura_id', id)
+
+        const vatPayer = client?.platitor_tva ?? false
+
+        const oblioPayload = {
+          cif: oblioSettings.cui,
+          issueDate: factura?.data_emitere ?? new Date().toISOString().slice(0, 10),
+          dueDate: factura?.data_scadenta ?? '',
+          seriesName: oblioSettings.serie_factura,
+          currency: 'RON',
+          language: 'RO',
+          observations: factura?.observatii ?? '',
+          internalNote: factura?.nota_interna ?? '',
+          client: {
+            cif: client?.cod_fiscal ?? '',
+            name: client?.denumire ?? '',
+            rc: client?.reg_com ?? '',
+            address: client?.adresa ?? '',
+            city: client?.oras ?? '',
+            county: client?.judet ?? '',
+            country: client?.tara || 'Romania',
+            phone: client?.telefon ?? '',
+            email: client?.email ?? '',
+            vatPayer,
+          },
+          products: (produse ?? []).map(p => ({
+            name: p.nume_produs,
+            code: p.cod ?? '',
+            measuringUnit: p.unitate || 'buc',
+            quantity: p.cantitate,
+            price: p.pret_vanzare,
+            vatName: vatPayer ? 'Normala' : 'Scutit',
+            vatPercentage: vatPayer ? 19 : 0,
+            isDiscount: false,
+          })),
+        }
+
+        const res = await fetch('/api/oblio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            oblioEmail: oblioSettings.oblio_email,
+            oblioSecret: oblioSettings.oblio_secret,
+            invoiceData: oblioPayload,
+          }),
+        })
+        const data = await res.json()
+
+        if (res.ok && data.link) {
+          // Salvează link-ul Oblio în BD
+          await supabase.from('facturi')
+            .update({ status: 'emisa', oblio_link: data.link, oblio_serie: data.seriesName ?? null, oblio_numar: data.number ?? null })
+            .eq('id', id)
+          setEmitandId(null)
+          loadFacturi()
+          return
+        } else {
+          // Eroare Oblio — emite local, arată avertisment
+          const errMsg = data.error ?? 'Eroare necunoscută Oblio'
+          const details = data.details ? JSON.stringify(data.details) : ''
+          alert(`⚠️ Oblio: ${errMsg}${details ? '\n' + details : ''}\n\nFactura a fost marcată ca emisă doar în aplicație.`)
+        }
+      } catch (e) {
+        alert(`⚠️ Conexiune Oblio eșuată: ${e}\n\nFactura a fost marcată ca emisă doar în aplicație.`)
+      }
+    }
+
+    // Fallback: doar actualizăm statusul local
     await supabase.from('facturi').update({ status: 'emisa' }).eq('id', id)
+    setEmitandId(null)
     loadFacturi()
   }
 
@@ -984,11 +1096,19 @@ function FacturarePageInner() {
                             </button>
                             <button
                               onClick={() => emiteFactura(f.id)}
-                              className="text-xs text-white font-bold px-3 py-1.5 rounded-lg"
+                              disabled={emitandId === f.id}
+                              className="text-xs text-white font-bold px-3 py-1.5 rounded-lg disabled:opacity-60"
                               style={{ backgroundColor: '#0f172a' }}>
-                              🧾 Emite factură
+                              {emitandId === f.id ? '⏳ Se trimite...' : '🧾 Emite factură'}
                             </button>
                           </>
+                        )}
+                        {f.oblio_link && (
+                          <a href={f.oblio_link} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-emerald-600 font-semibold px-2 py-1 rounded hover:bg-emerald-50 border border-emerald-200"
+                            title="Vezi factura în Oblio">
+                            🔗 Oblio
+                          </a>
                         )}
                         <button
                           onClick={() => router.push(`/facturare/${f.id}`)}
