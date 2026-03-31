@@ -4,19 +4,25 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface OblioFactura {
+  id: string
   seriesName: string
-  number: number
+  number: string
   issueDate: string
   dueDate: string
-  totalAmount: number
-  vatAmount: number
-  isPaid: boolean
+  total: string        // string in Oblio
+  totalVat: string
+  collected: string    // "0" = neplătit, "1" = plătit
+  canceled: string
+  storno: string
   link: string
   client: {
     name: string
     cif?: string
   }
 }
+
+function isPaid(f: OblioFactura) { return f.collected === '1' }
+function totalNum(f: OblioFactura) { return parseFloat(f.total) || 0 }
 
 interface ClientSold {
   name: string
@@ -104,28 +110,28 @@ export default function IncasariPage() {
   // filtrare
   const azi = new Date().toISOString().slice(0, 10)
   const facturiFiltrate = facturi.filter(f => {
-    if (filtruStatus === 'platite') return f.isPaid
-    if (filtruStatus === 'neplatite') return !f.isPaid
-    if (filtruStatus === 'restante') return !f.isPaid && f.dueDate && f.dueDate < azi
+    if (filtruStatus === 'platite') return isPaid(f)
+    if (filtruStatus === 'neplatite') return !isPaid(f)
+    if (filtruStatus === 'restante') return !isPaid(f) && f.dueDate && f.dueDate < azi
     return true
   })
 
   // KPIs
-  const totalEmis = facturi.reduce((s, f) => s + f.totalAmount, 0)
-  const totalNeplatit = facturi.filter(f => !f.isPaid).reduce((s, f) => s + f.totalAmount, 0)
-  const totalRestant = facturi.filter(f => !f.isPaid && f.dueDate && f.dueDate < azi).reduce((s, f) => s + f.totalAmount, 0)
-  const nrRestante = facturi.filter(f => !f.isPaid && f.dueDate && f.dueDate < azi).length
+  const totalEmis = facturi.reduce((s, f) => s + totalNum(f), 0)
+  const totalNeplatit = facturi.filter(f => !isPaid(f)).reduce((s, f) => s + totalNum(f), 0)
+  const totalRestant = facturi.filter(f => !isPaid(f) && f.dueDate && f.dueDate < azi).reduce((s, f) => s + totalNum(f), 0)
+  const nrRestante = facturi.filter(f => !isPaid(f) && f.dueDate && f.dueDate < azi).length
 
   // Group by client
   const clientMap: Record<string, ClientSold> = {}
   facturiFiltrate.forEach(f => {
     const key = f.client?.name ?? '—'
     if (!clientMap[key]) clientMap[key] = { name: key, total: 0, platit: 0, neplatit: 0, restant: 0, facturi: [] }
-    clientMap[key].total += f.totalAmount
-    if (f.isPaid) clientMap[key].platit += f.totalAmount
+    clientMap[key].total += totalNum(f)
+    if (isPaid(f)) clientMap[key].platit += totalNum(f)
     else {
-      clientMap[key].neplatit += f.totalAmount
-      if (f.dueDate && f.dueDate < azi) clientMap[key].restant += f.totalAmount
+      clientMap[key].neplatit += totalNum(f)
+      if (f.dueDate && f.dueDate < azi) clientMap[key].restant += totalNum(f)
     }
     clientMap[key].facturi.push(f)
   })
@@ -195,7 +201,7 @@ export default function IncasariPage() {
             <div className="bg-white rounded-xl border border-orange-200 p-4">
               <p className="text-xs font-semibold text-orange-500 uppercase tracking-wide">Neîncasat</p>
               <p className="text-2xl font-bold text-orange-700 mt-1">{totalNeplatit.toFixed(0)} <span className="text-sm font-normal text-orange-400">RON</span></p>
-              <p className="text-xs text-orange-400 mt-1">{facturi.filter(f => !f.isPaid).length} facturi</p>
+              <p className="text-xs text-orange-400 mt-1">{facturi.filter(f => !isPaid(f)).length} facturi</p>
             </div>
             <div className="bg-white rounded-xl border border-red-200 p-4">
               <p className="text-xs font-semibold text-red-500 uppercase tracking-wide">Restante</p>
@@ -205,7 +211,7 @@ export default function IncasariPage() {
             <div className="bg-white rounded-xl border border-green-200 p-4">
               <p className="text-xs font-semibold text-green-500 uppercase tracking-wide">Încasat</p>
               <p className="text-2xl font-bold text-green-700 mt-1">{(totalEmis - totalNeplatit).toFixed(0)} <span className="text-sm font-normal text-green-400">RON</span></p>
-              <p className="text-xs text-green-400 mt-1">{facturi.filter(f => f.isPaid).length} facturi platite</p>
+              <p className="text-xs text-green-400 mt-1">{facturi.filter(f => isPaid(f)).length} facturi platite</p>
             </div>
           </div>
 
@@ -240,7 +246,7 @@ export default function IncasariPage() {
                       <tbody className="divide-y divide-gray-100">
                         {c.facturi.map((f, i) => {
                           const zileRamase = f.dueDate ? zile(f.dueDate) : null
-                          const restanta = !f.isPaid && f.dueDate && f.dueDate < azi
+                          const restanta = !isPaid(f) && f.dueDate && f.dueDate < azi
                           return (
                             <tr key={i} className={restanta ? 'bg-red-50' : ''}>
                               <td className="px-4 py-2 font-mono font-semibold">{f.seriesName}{f.number}</td>
@@ -249,7 +255,7 @@ export default function IncasariPage() {
                                 {f.dueDate ? (
                                   <span className={restanta ? 'text-red-600 font-semibold' : 'text-gray-600'}>
                                     {f.dueDate}
-                                    {!f.isPaid && zileRamase !== null && (
+                                    {!isPaid(f) && zileRamase !== null && (
                                       <span className="ml-1 text-xs">
                                         {zileRamase < 0 ? `(${Math.abs(zileRamase)}z întârziere)` : `(${zileRamase}z)`}
                                       </span>
@@ -257,10 +263,10 @@ export default function IncasariPage() {
                                   </span>
                                 ) : '—'}
                               </td>
-                              <td className="px-4 py-2 text-right font-bold">{f.totalAmount.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-right font-bold">{totalNum(f).toFixed(2)}</td>
                               <td className="px-4 py-2 text-center">
-                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${f.isPaid ? 'bg-green-100 text-green-700' : restanta ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
-                                  {f.isPaid ? 'Plătit' : restanta ? 'Restant' : 'Neplatit'}
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${isPaid(f) ? 'bg-green-100 text-green-700' : restanta ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                                  {isPaid(f) ? 'Plătit' : restanta ? 'Restant' : 'Neplatit'}
                                 </span>
                               </td>
                               <td className="px-4 py-2">
@@ -294,7 +300,7 @@ export default function IncasariPage() {
                   <tbody className="divide-y divide-gray-100">
                     {facturiFiltrate.map((f, i) => {
                       const zileRamase = f.dueDate ? zile(f.dueDate) : null
-                      const restanta = !f.isPaid && f.dueDate && f.dueDate < azi
+                      const restanta = !isPaid(f) && f.dueDate && f.dueDate < azi
                       return (
                         <tr key={i} className={`hover:bg-gray-50 transition-colors ${restanta ? 'bg-red-50 hover:bg-red-100' : ''}`}>
                           <td className="px-5 py-3 font-mono font-semibold text-gray-900">{f.seriesName}{f.number}</td>
@@ -304,7 +310,7 @@ export default function IncasariPage() {
                             {f.dueDate ? (
                               <span className={restanta ? 'text-red-600 font-semibold' : 'text-gray-600'}>
                                 {f.dueDate}
-                                {!f.isPaid && zileRamase !== null && (
+                                {!isPaid(f) && zileRamase !== null && (
                                   <span className="ml-1 text-xs text-gray-400">
                                     {zileRamase < 0 ? `(${Math.abs(zileRamase)}z întârziere)` : `(${zileRamase}z)`}
                                   </span>
@@ -312,12 +318,12 @@ export default function IncasariPage() {
                               </span>
                             ) : '—'}
                           </td>
-                          <td className="px-5 py-3 text-right font-bold text-gray-900">{f.totalAmount.toFixed(2)}</td>
+                          <td className="px-5 py-3 text-right font-bold text-gray-900">{totalNum(f).toFixed(2)}</td>
                           <td className="px-5 py-3 text-center">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              f.isPaid ? 'bg-green-100 text-green-700' : restanta ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                              isPaid(f) ? 'bg-green-100 text-green-700' : restanta ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
                             }`}>
-                              {f.isPaid ? '✓ Plătit' : restanta ? '⚠ Restant' : '○ Neplatit'}
+                              {isPaid(f) ? '✓ Plătit' : restanta ? '⚠ Restant' : '○ Neplatit'}
                             </span>
                           </td>
                           <td className="px-5 py-3">
