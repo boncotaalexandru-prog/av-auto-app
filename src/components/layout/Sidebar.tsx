@@ -19,6 +19,7 @@ const navItems: NavItem[] = [
   { label: 'Furnizori',        href: '/furnizori',        icon: '🏭' },
   { label: 'Oferte',           href: '/oferte',           icon: '📋' },
   { label: 'Facturare',        href: '/facturare',        icon: '🧾' },
+  { label: 'Încasări',         href: '/incasari',         icon: '💰', adminOnly: true },
   { label: 'Marfa de ridicat', href: '/marfa-de-ridicat', icon: '🚛' },
   { label: 'Gestiune',         href: '/gestiune',         icon: '🏪' },
   { label: 'Clienti',          href: '/clienti',          icon: '👥' },
