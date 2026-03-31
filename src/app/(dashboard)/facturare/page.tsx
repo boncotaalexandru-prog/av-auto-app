@@ -161,6 +161,7 @@ function FacturarePageInner() {
   const [showProdList, setShowProdList] = useState(false)
   const [ultimaOfertare, setUltimaOfertare] = useState<{ pret: number; data: string; numar: number } | null>(null)
   const [pretSpecial, setPretSpecial] = useState<number | null>(null)
+  const [adaosModalInput, setAdaosModalInput] = useState('')
   const prodRef = useRef<HTMLDivElement>(null)
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [salvand, setSalvand] = useState(false)
@@ -393,19 +394,36 @@ function FacturarePageInner() {
       stoc_disponibil: lista.reduce((s, o) => s + o.cantitate, 0),
       stoc_optiuni: lista,
     }))
+    const ach2 = prima?.pret_achizitie ?? 0
+    const vanz2 = prima?.pret_lista ?? 0
+    if (ach2 > 0 && vanz2 > 0) {
+      setAdaosModalInput(((vanz2 - ach2) / ach2 * 100).toFixed(1))
+    } else {
+      setAdaosModalInput('')
+    }
   }
 
   function aplicaStocOptiune(idx: number) {
     const opt = form.stoc_optiuni[idx]
     if (!opt) return
     setForm(f => ({ ...f, stoc_idx: idx, stoc_id: opt.id, pret_achizitie: opt.pret_achizitie, pret_vanzare: opt.pret_lista ?? f.pret_vanzare }))
+    if (opt.pret_achizitie > 0 && (opt.pret_lista ?? 0) > 0) {
+      setAdaosModalInput(((opt.pret_lista! - opt.pret_achizitie) / opt.pret_achizitie * 100).toFixed(1))
+    }
   }
 
   function deschideModal(idx?: number) {
     if (idx !== undefined) {
       setEditIdx(idx); setForm({ ...randuri[idx] }); setProdSearch(randuri[idx].nume_produs)
+      const r = randuri[idx]
+      if (r.pret_achizitie > 0 && r.pret_vanzare > 0) {
+        setAdaosModalInput(((r.pret_vanzare - r.pret_achizitie) / r.pret_achizitie * 100).toFixed(1))
+      } else {
+        setAdaosModalInput('')
+      }
     } else {
       setEditIdx(null); setForm(emptyRand()); setProdSearch('')
+      setAdaosModalInput('')
     }
     setUltimaOfertare(null); setPretSpecial(null)
     setModal(true)
@@ -1468,50 +1486,105 @@ function FacturarePageInner() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
+                {/* Preț achiziție */}
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-1.5">
-                    Preț achiziție {form.stoc_optiuni.length > 0 && <span className="text-xs text-gray-500 font-normal">(din gestiune)</span>}
+                    Preț achiziție
+                    {form.stoc_optiuni.length > 0 && <span className="block text-xs text-gray-500 font-normal">(din gestiune)</span>}
                   </label>
                   <input type="number" min={0} step={0.01} value={form.pret_achizitie}
-                    onChange={e => form.stoc_optiuni.length === 0 && setForm(f => ({ ...f, pret_achizitie: parseFloat(e.target.value) || 0 }))}
+                    onChange={e => {
+                      if (form.stoc_optiuni.length > 0) return
+                      const ach = parseFloat(e.target.value) || 0
+                      const adaos = parseFloat(adaosModalInput)
+                      const newVanz = ach > 0 && !isNaN(adaos)
+                        ? parseFloat((ach * (1 + adaos / 100)).toFixed(2))
+                        : 0
+                      setForm(f => ({ ...f, pret_achizitie: ach, pret_vanzare: newVanz }))
+                    }}
                     readOnly={form.stoc_optiuni.length > 0}
                     className={`w-full px-3 py-2 border rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 ${form.stoc_optiuni.length > 0 ? 'bg-gray-50 border-gray-200 cursor-not-allowed' : 'border-gray-300'}`}
                   />
                 </div>
+                {/* Adaos % — activ doar după ce ai preț achiziție */}
                 <div>
-                  <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
-                    <label className="text-sm font-medium text-gray-900">Preț vânzare</label>
-                    <div className="flex gap-1.5 flex-wrap justify-end">
+                  <label className={`block text-sm font-medium mb-1.5 ${form.pret_achizitie > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                    Adaos %
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number" step="0.1"
+                      value={adaosModalInput}
+                      disabled={form.pret_achizitie <= 0}
+                      onChange={e => {
+                        setAdaosModalInput(e.target.value)
+                        const adaos = parseFloat(e.target.value)
+                        if (!isNaN(adaos) && form.pret_achizitie > 0) {
+                          setForm(f => ({ ...f, pret_vanzare: parseFloat((f.pret_achizitie * (1 + adaos / 100)).toFixed(2)) }))
+                        }
+                      }}
+                      placeholder={form.pret_achizitie > 0 ? '0' : '—'}
+                      className={`w-full px-3 py-2 pr-8 border rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                        form.pret_achizitie <= 0 ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' :
+                        parseFloat(adaosModalInput) > 0 ? 'border-green-400 bg-green-50 text-green-800' :
+                        parseFloat(adaosModalInput) < 0 ? 'border-red-400 bg-red-50 text-red-800' :
+                        'border-orange-300 bg-orange-50 text-gray-900'
+                      }`}
+                    />
+                    <span className="absolute right-3 top-2.5 text-sm text-gray-400 pointer-events-none">%</span>
+                  </div>
+                </div>
+                {/* Preț vânzare — blocat, calculat automat */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                    <label className="text-sm font-medium text-gray-900">
+                      Preț vânzare
+                      <span className="ml-1 text-xs text-gray-400 font-normal">(calculat)</span>
+                    </label>
+                    <div className="flex gap-1 flex-wrap justify-end">
                       {pretSpecial !== null && (
-                        <button type="button" onClick={() => setForm(f => ({ ...f, pret_vanzare: pretSpecial! }))}
-                          className="text-xs font-bold rounded px-2 py-1 flex items-center gap-1"
+                        <button type="button"
+                          onClick={() => {
+                            if (form.pret_achizitie > 0) {
+                              const adaos = ((pretSpecial! - form.pret_achizitie) / form.pret_achizitie * 100)
+                              setAdaosModalInput(adaos.toFixed(1))
+                              setForm(f => ({ ...f, pret_vanzare: pretSpecial! }))
+                            }
+                          }}
+                          className="text-xs font-bold rounded px-1.5 py-0.5"
                           style={{ color: '#5b21b6', backgroundColor: '#ede9fe', border: '1px solid #a78bfa' }}>
-                          <span>⭐</span>
-                          <span style={{ color: '#3b0764' }}>Preț special: {pretSpecial!.toFixed(2)} RON · ↩</span>
+                          ⭐ {pretSpecial!.toFixed(2)}
                         </button>
                       )}
                       {ultimaOfertare && (
-                        <button type="button" onClick={() => setForm(f => ({ ...f, pret_vanzare: ultimaOfertare.pret }))}
-                          className="text-xs font-semibold rounded px-2 py-0.5 flex items-center gap-1"
+                        <button type="button"
+                          onClick={() => {
+                            if (form.pret_achizitie > 0) {
+                              const adaos = ((ultimaOfertare.pret - form.pret_achizitie) / form.pret_achizitie * 100)
+                              setAdaosModalInput(adaos.toFixed(1))
+                              setForm(f => ({ ...f, pret_vanzare: ultimaOfertare.pret }))
+                            }
+                          }}
+                          className="text-xs font-semibold rounded px-1.5 py-0.5"
                           style={{ color: '#92400e', backgroundColor: '#fffbeb', border: '1px solid #fcd34d' }}>
-                          <span>📋</span>
-                          <span>#{ultimaOfertare.numar} · {ultimaOfertare.data} · {ultimaOfertare.pret.toFixed(2)} RON · ↩</span>
+                          📋 #{ultimaOfertare.numar} · {ultimaOfertare.pret.toFixed(2)}
                         </button>
                       )}
                     </div>
                   </div>
-                  <input type="number" min={0} step={0.01} value={form.pret_vanzare}
-                    onChange={e => setForm(f => ({ ...f, pret_vanzare: parseFloat(e.target.value) || 0 }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <div className={`w-full px-3 py-2 border rounded-lg text-sm font-bold text-right cursor-not-allowed ${
+                    form.pret_vanzare > 0 ? 'bg-green-50 border-green-300 text-green-900' : 'bg-gray-100 border-gray-200 text-gray-400'
+                  }`}>
+                    {form.pret_vanzare > 0 ? form.pret_vanzare.toFixed(2) + ' RON' : '—'}
+                  </div>
                 </div>
               </div>
 
               {form.pret_achizitie > 0 && form.pret_vanzare > 0 && (
                 <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold ${form.pret_vanzare >= form.pret_achizitie ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
                   <span>{form.pret_vanzare >= form.pret_achizitie ? '▲' : '▼'} Adaos:</span>
-                  <span>{(((form.pret_vanzare - form.pret_achizitie) / form.pret_achizitie) * 100).toFixed(1)}%</span>
+                  <span className="text-base">{(((form.pret_vanzare - form.pret_achizitie) / form.pret_achizitie) * 100).toFixed(1)}%</span>
                   <span className="font-normal text-xs opacity-70">({(form.pret_vanzare - form.pret_achizitie).toFixed(2)} RON / buc)</span>
                 </div>
               )}

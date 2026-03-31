@@ -146,6 +146,7 @@ export default function OfertaPage() {
   const [stocMap, setStocMap] = useState<Record<string, number>>({})
   const [pretSpecialClient, setPretSpecialClient] = useState<number | null>(null)
   const [editRandId, setEditRandId] = useState<string | null>(null)
+  const [adaosInput, setAdaosInput] = useState('')
   const prodRef = useRef<HTMLDivElement>(null)
   const furnRef = useRef<HTMLDivElement>(null)
 
@@ -274,6 +275,13 @@ export default function OfertaPage() {
       pret_vanzare: prima?.pret_lista ?? p.pret ?? 0,
       producator: p.producator ?? '',
     }))
+    const ach = prima?.pret_achizitie ?? 0
+    const vanz = prima?.pret_lista ?? p.pret ?? 0
+    if (ach > 0 && vanz > 0) {
+      setAdaosInput(((vanz - ach) / ach * 100).toFixed(1))
+    } else {
+      setAdaosInput('')
+    }
     setProdSearch(p.nume)
     setShowProdList(false)
     setEditProducatorModal(false)
@@ -289,6 +297,9 @@ export default function OfertaPage() {
       pret_achizitie: opt.pret_achizitie,
       pret_vanzare: opt.pret_lista ?? f.pret_vanzare,
     }))
+    if (opt.pret_achizitie > 0 && (opt.pret_lista ?? 0) > 0) {
+      setAdaosInput(((opt.pret_lista! - opt.pret_achizitie) / opt.pret_achizitie * 100).toFixed(1))
+    }
   }
 
   async function selectFurnizor(f: FurnizorSearch | { id: null; denumire: string; is_favorit: false }) {
@@ -318,6 +329,7 @@ export default function OfertaPage() {
     setStocOptiuni([])
     setStocOptiuneIdx(0)
     setEditRandId(null)
+    setAdaosInput('')
   }
 
   function deschideEditRand(p: OfertaProdus) {
@@ -342,6 +354,11 @@ export default function OfertaPage() {
     setFurnizorSearch(p.furnizori?.denumire ?? '')
     setStocOptiuni([])
     setStocOptiuneIdx(0)
+    if (p.pret_achizitie > 0 && p.pret_vanzare > 0) {
+      setAdaosInput(((p.pret_vanzare - p.pret_achizitie) / p.pret_achizitie * 100).toFixed(1))
+    } else {
+      setAdaosInput('')
+    }
     setModal(true)
   }
 
@@ -1104,7 +1121,7 @@ export default function OfertaPage() {
                 </div>
               )}
 
-              {/* Pret achizitie + Pret vanzare + Adaos dinamic */}
+              {/* Calculator pret: Achizitie | Adaos % | Vanzare */}
               <div className="space-y-2">
                 {form.produs_id && stocOptiuni.length > 1 && (
                   <div className="border border-blue-200 rounded-lg overflow-hidden">
@@ -1140,49 +1157,93 @@ export default function OfertaPage() {
                     <span>Produsul nu este in gestiune · Introdu preturile manual</span>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Pret achizitie */}
                   <div>
                     <label className="block text-sm font-medium text-gray-900 mb-1.5">
                       Pret achizitie
-                      {stocOptiuni.length > 0 && <span className="ml-1 text-xs text-gray-400 font-normal">(din gestiune)</span>}
+                      {stocOptiuni.length > 0 && <span className="block text-xs text-gray-400 font-normal">(din gestiune)</span>}
                     </label>
                     <input
-                      type="number"
-                      min="0"
-                      step="0.01"
+                      type="number" min="0" step="0.01"
                       value={form.pret_achizitie}
-                      onChange={e => stocOptiuni.length === 0 && setForm(f => ({ ...f, pret_achizitie: parseFloat(e.target.value) || 0 }))}
+                      onChange={e => {
+                        if (stocOptiuni.length > 0) return
+                        const ach = parseFloat(e.target.value) || 0
+                        const adaos = parseFloat(adaosInput)
+                        const newVanz = ach > 0 && !isNaN(adaos)
+                          ? parseFloat((ach * (1 + adaos / 100)).toFixed(2))
+                          : 0
+                        setForm(f => ({ ...f, pret_achizitie: ach, pret_vanzare: newVanz }))
+                      }}
                       readOnly={stocOptiuni.length > 0}
                       className={`w-full px-3 py-2 border rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 ${stocOptiuni.length > 0 ? 'bg-gray-50 border-gray-200 cursor-not-allowed text-gray-600' : 'border-gray-300'}`}
                     />
                   </div>
+                  {/* Adaos % — activ doar dupa ce ai pret achizitie */}
                   <div>
-                    <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
-                      <label className="text-sm font-medium text-gray-900">Pret vanzare <span className="text-gray-500 font-normal">(preț listă +30%)</span></label>
+                    <label className={`block text-sm font-medium mb-1.5 ${form.pret_achizitie > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                      Adaos %
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number" step="0.1"
+                        value={adaosInput}
+                        disabled={form.pret_achizitie <= 0}
+                        onChange={e => {
+                          setAdaosInput(e.target.value)
+                          const adaos = parseFloat(e.target.value)
+                          if (!isNaN(adaos) && form.pret_achizitie > 0) {
+                            setForm(f => ({ ...f, pret_vanzare: parseFloat((f.pret_achizitie * (1 + adaos / 100)).toFixed(2)) }))
+                          }
+                        }}
+                        placeholder={form.pret_achizitie > 0 ? '0' : '—'}
+                        className={`w-full px-3 py-2 pr-8 border rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                          form.pret_achizitie <= 0 ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' :
+                          parseFloat(adaosInput) > 0 ? 'border-green-400 bg-green-50 text-green-800' :
+                          parseFloat(adaosInput) < 0 ? 'border-red-400 bg-red-50 text-red-800' :
+                          'border-orange-300 bg-orange-50 text-gray-900'
+                        }`}
+                      />
+                      <span className="absolute right-3 top-2.5 text-sm text-gray-400 pointer-events-none">%</span>
+                    </div>
+                  </div>
+                  {/* Pret vanzare — blocat, calculat automat */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                      <label className="text-sm font-medium text-gray-900">
+                        Pret vanzare
+                        <span className="ml-1 text-xs text-gray-400 font-normal">(calculat)</span>
+                      </label>
                       {pretSpecialClient !== null && (
-                        <button
-                          type="button"
-                          onClick={() => setForm(f => ({ ...f, pret_vanzare: pretSpecialClient! }))}
-                          className="text-xs font-bold rounded px-2 py-1 flex items-center gap-1"
-                          style={{ color: '#5b21b6', backgroundColor: '#ede9fe', border: '1px solid #a78bfa' }}
-                        >
-                          <span>⭐</span>
-                          <span style={{ color: '#3b0764' }}>Preț special client: {pretSpecialClient!.toFixed(2)} RON · ↩ folosește</span>
+                        <button type="button"
+                          onClick={() => {
+                            if (form.pret_achizitie > 0) {
+                              const adaos = ((pretSpecialClient! - form.pret_achizitie) / form.pret_achizitie * 100)
+                              setAdaosInput(adaos.toFixed(1))
+                              setForm(f => ({ ...f, pret_vanzare: pretSpecialClient! }))
+                            }
+                          }}
+                          className="text-xs font-bold rounded px-1.5 py-0.5"
+                          style={{ color: '#5b21b6', backgroundColor: '#ede9fe', border: '1px solid #a78bfa' }}>
+                          ⭐ {pretSpecialClient!.toFixed(2)} RON
                         </button>
                       )}
                     </div>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.pret_vanzare}
-                      onChange={e => setForm(f => ({ ...f, pret_vanzare: parseFloat(e.target.value) || 0 }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    <div className={`w-full px-3 py-2 border rounded-lg text-sm font-bold text-right cursor-not-allowed ${
+                      form.pret_vanzare > 0 ? 'bg-green-50 border-green-300 text-green-900' : 'bg-gray-100 border-gray-200 text-gray-400'
+                    }`}>
+                      {form.pret_vanzare > 0 ? form.pret_vanzare.toFixed(2) + ' RON' : '—'}
+                    </div>
                   </div>
                 </div>
-                {/* Adaos dinamic */}
-                <AdaosDisplay ach={form.pret_achizitie} vanz={form.pret_vanzare} />
+                {form.pret_achizitie > 0 && form.pret_vanzare > 0 && (
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold ${form.pret_vanzare >= form.pret_achizitie ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                    <span>{form.pret_vanzare >= form.pret_achizitie ? '▲' : '▼'} Adaos:</span>
+                    <span className="text-base">{(((form.pret_vanzare - form.pret_achizitie) / form.pret_achizitie) * 100).toFixed(1)}%</span>
+                    <span className="font-normal text-xs opacity-70">({(form.pret_vanzare - form.pret_achizitie).toFixed(2)} RON / buc)</span>
+                  </div>
+                )}
               </div>
 
               {/* Furnizor */}
