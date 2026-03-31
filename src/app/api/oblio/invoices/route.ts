@@ -34,13 +34,16 @@ export async function POST(req: NextRequest) {
     const listRes = await fetch(`https://www.oblio.eu/api/docs/invoice/list?${params}`, {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     })
-    const listJson = await listRes.json()
+    const listText = await listRes.text()
+    let listJson: unknown
+    try { listJson = JSON.parse(listText) } catch { listJson = { raw: listText } }
 
     if (!listRes.ok) {
-      return NextResponse.json({ error: 'Eroare Oblio list', details: listJson }, { status: listRes.status })
+      return NextResponse.json({ error: 'Eroare Oblio list', details: listJson, status: listRes.status }, { status: listRes.status })
     }
 
-    return NextResponse.json(listJson)
+    // Returnăm tot răspunsul + debug info
+    return NextResponse.json({ _raw: listJson, _status: listRes.status })
   } catch (e) {
     return NextResponse.json({ error: 'Eroare server', details: String(e) }, { status: 500 })
   }
