@@ -641,8 +641,14 @@ function FacturarePageInner() {
         // Încarcă datele clientului
         const { data: client } = await supabase
           .from('clienti')
-          .select('denumire, cod_fiscal, reg_com, adresa, oras, judet, tara, telefon, email, platitor_tva')
+          .select('denumire, cod_fiscal, reg_com, adresa, localitate, judet, tara, telefon, email, platitor_tva')
           .eq('id', factura?.client_id).single()
+
+        if (!client?.denumire) {
+          alert('⚠️ Clientul nu are denumire completată. Completează datele clientului înainte de a emite.')
+          setEmitandId(null)
+          return
+        }
 
         // Încarcă produsele facturii
         const { data: produse } = await supabase
@@ -668,7 +674,7 @@ function FacturarePageInner() {
             name: client?.denumire ?? '',
             rc: client?.reg_com ?? '',
             address: client?.adresa ?? '',
-            city: client?.oras ?? '',
+            city: client?.localitate ?? '',
             county: client?.judet ?? '',
             country: client?.tara || 'Romania',
             phone: client?.telefon ?? '',
