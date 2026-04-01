@@ -659,8 +659,8 @@ function FacturarePageInner() {
           seriesName: oblioSettings.serie_factura,
           currency: 'RON',
           language: 'RO',
-          isDraft: 0,          // finalizata direct, nu ciorna
-          useStock: 0,         // oblio nu descarca stoc propriu
+          isDraft: false,       // finalizata direct, nu ciorna
+          useStock: false,      // oblio nu descarca stoc propriu
           observations: factura?.observatii ?? '',
           internalNote: factura?.nota_interna ?? '',
           client: {
@@ -699,7 +699,7 @@ function FacturarePageInner() {
         const data = await res.json()
 
         if (res.ok && data.link) {
-          // Salvează link-ul Oblio în BD
+          // Succes Oblio — salvează link și marchează emisa
           await supabase.from('facturi')
             .update({ status: 'emisa', oblio_link: data.link, oblio_serie: data.seriesName ?? null, oblio_numar: data.number ?? null })
             .eq('id', id)
@@ -707,17 +707,21 @@ function FacturarePageInner() {
           loadFacturi()
           return
         } else {
-          // Eroare Oblio — emite local, arată avertisment
+          // Eroare Oblio — NU marcam ca emisa, afișăm eroarea
           const errMsg = data.error ?? 'Eroare necunoscută Oblio'
           const details = data.details ? JSON.stringify(data.details) : ''
-          alert(`⚠️ Oblio: ${errMsg}${details ? '\n' + details : ''}\n\nFactura a fost marcată ca emisă doar în aplicație.`)
+          alert(`⚠️ Oblio: ${errMsg}${details ? '\n' + details : ''}\n\nFactura NU a fost trimisă. Corectează și încearcă din nou.`)
+          setEmitandId(null)
+          return
         }
       } catch (e) {
-        alert(`⚠️ Conexiune Oblio eșuată: ${e}\n\nFactura a fost marcată ca emisă doar în aplicație.`)
+        alert(`⚠️ Conexiune Oblio eșuată: ${e}\n\nFactura NU a fost trimisă.`)
+        setEmitandId(null)
+        return
       }
     }
 
-    // Fallback: doar actualizăm statusul local
+    // Fara Oblio configurat — doar actualizăm statusul local
     await supabase.from('facturi').update({ status: 'emisa' }).eq('id', id)
     setEmitandId(null)
     loadFacturi()
