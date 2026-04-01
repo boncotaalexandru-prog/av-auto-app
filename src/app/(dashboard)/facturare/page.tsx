@@ -719,8 +719,8 @@ function FacturarePageInner() {
         } else {
           // Eroare Oblio — NU marcam ca emisa, afișăm tot răspunsul
           const errMsg = data.error ?? data.statusMessage ?? data.message ?? 'Eroare necunoscută Oblio'
-          const details = data.details ?? data.data ?? null
-          alert(`⚠️ Oblio: ${errMsg}${details ? '\n' + JSON.stringify(details) : ''}\n\nRăspuns complet: ${JSON.stringify(data).slice(0, 500)}\n\nFactura NU a fost trimisă.`)
+          const details = data.details ? JSON.stringify(data.details) : ''
+          alert(`⚠️ Oblio: ${errMsg}${details ? '\n' + details : ''}\n\nFactura NU a fost trimisă. Corectează și încearcă din nou.`)
           setEmitandId(null)
           return
         }
