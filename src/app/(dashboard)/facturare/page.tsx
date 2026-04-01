@@ -705,19 +705,22 @@ function FacturarePageInner() {
         })
         const data = await res.json()
 
-        if (res.ok && data.link) {
+        if (res.ok && (data.link || data.data?.link)) {
           // Succes Oblio — salvează link și marchează emisa
+          const link = data.link ?? data.data?.link
+          const seriesName = data.seriesName ?? data.data?.seriesName
+          const number = data.number ?? data.data?.number
           await supabase.from('facturi')
-            .update({ status: 'emisa', oblio_link: data.link, oblio_serie: data.seriesName ?? null, oblio_numar: data.number ?? null })
+            .update({ status: 'emisa', oblio_link: link, oblio_serie: seriesName ?? null, oblio_numar: number ?? null })
             .eq('id', id)
           setEmitandId(null)
           loadFacturi()
           return
         } else {
-          // Eroare Oblio — NU marcam ca emisa, afișăm eroarea
-          const errMsg = data.error ?? 'Eroare necunoscută Oblio'
-          const details = data.details ? JSON.stringify(data.details) : ''
-          alert(`⚠️ Oblio: ${errMsg}${details ? '\n' + details : ''}\n\nFactura NU a fost trimisă. Corectează și încearcă din nou.`)
+          // Eroare Oblio — NU marcam ca emisa, afișăm tot răspunsul
+          const errMsg = data.error ?? data.statusMessage ?? data.message ?? 'Eroare necunoscută Oblio'
+          const details = data.details ?? data.data ?? null
+          alert(`⚠️ Oblio: ${errMsg}${details ? '\n' + JSON.stringify(details) : ''}\n\nRăspuns complet: ${JSON.stringify(data).slice(0, 500)}\n\nFactura NU a fost trimisă.`)
           setEmitandId(null)
           return
         }
