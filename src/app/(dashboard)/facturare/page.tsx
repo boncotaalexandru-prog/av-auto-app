@@ -659,8 +659,8 @@ function FacturarePageInner() {
           seriesName: oblioSettings.serie_factura,
           currency: 'RON',
           language: 'RO',
-          isDraft: false,       // finalizata direct, nu ciorna
-          useStock: false,      // oblio nu descarca stoc propriu
+          isDraft: 0,           // finalizata direct, nu ciorna
+          useStock: 0,          // oblio nu descarca stoc propriu
           observations: factura?.observatii ?? '',
           internalNote: factura?.nota_interna ?? '',
           client: {
