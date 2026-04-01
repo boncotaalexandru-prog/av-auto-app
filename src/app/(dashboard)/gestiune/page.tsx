@@ -109,6 +109,8 @@ export default function GestiunePage() {
   const [stoc, setStoc] = useState<StocItem[]>([])
   const [loadingStoc, setLoadingStoc] = useState(true)
   const [cautareStoc, setCautareStoc] = useState('')
+  // Rezervari: stoc_id (sau `cod:X`) → lista clienti care au produs in factura nefinalizata
+  const [rezervari, setRezervari] = useState<Record<string, { client: string; cantitate: number }[]>>({})
 
   // NIR list
   const [nirList, setNirList] = useState<NirRow[]>([])
@@ -163,8 +165,39 @@ export default function GestiunePage() {
 
   async function incarcaStoc() {
     setLoadingStoc(true)
-    const { data } = await createClient().from('stoc').select('*').order('produs_nume')
+    const supabase = createClient()
+    const { data } = await supabase.from('stoc').select('*').order('produs_nume')
     setStoc((data as StocItem[]) ?? [])
+
+    // Incarca rezervarile: produse din facturi nefinalizate
+    const { data: nefinalizate } = await supabase
+      .from('facturi')
+      .select('id, clienti(denumire)')
+      .eq('status', 'nefinalizata')
+
+    if (nefinalizate && nefinalizate.length > 0) {
+      const clientMap: Record<string, string> = {}
+      for (const f of nefinalizate) {
+        const c = Array.isArray(f.clienti) ? f.clienti[0] : (f.clienti as { denumire: string } | null)
+        clientMap[f.id] = c?.denumire ?? '(necunoscut)'
+      }
+      const ids = nefinalizate.map(f => f.id)
+      const { data: fp } = await supabase
+        .from('facturi_produse')
+        .select('stoc_id, cod, cantitate, factura_id')
+        .in('factura_id', ids)
+
+      const map: Record<string, { client: string; cantitate: number }[]> = {}
+      for (const p of (fp ?? [])) {
+        const key = p.stoc_id ?? `cod:${p.cod ?? ''}`
+        if (!map[key]) map[key] = []
+        map[key].push({ client: clientMap[p.factura_id] ?? '?', cantitate: p.cantitate ?? 1 })
+      }
+      setRezervari(map)
+    } else {
+      setRezervari({})
+    }
+
     setLoadingStoc(false)
   }
 
@@ -672,7 +705,14 @@ export default function GestiunePage() {
                   </td></tr>
                 ) : stocFiltrat.map(s => (
                   <tr key={s.id} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{s.produs_nume}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-900">
+                      <div>{s.produs_nume}</div>
+                      {(rezervari[s.id] ?? rezervari[`cod:${s.produs_cod ?? ''}`] ?? []).map((r, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                          🔒 REZERVAT {r.cantitate} buc — {r.client}
+                        </span>
+                      ))}
+                    </td>
                     <td className="px-4 py-2.5 text-gray-900">{s.producator || '—'}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-900">{s.produs_cod || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-900">{s.unitate || 'buc'}</td>

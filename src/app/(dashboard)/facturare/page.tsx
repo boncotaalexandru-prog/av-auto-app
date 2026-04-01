@@ -484,27 +484,8 @@ function FacturarePageInner() {
     const supabase = createClient()
 
     if (editFacturaId) {
-      // Edit mode: restore old stock, delete old products, update factura, insert new products, deduct new stock
-
-      // Restore old stock
-      const { data: liniiVechi } = await supabase
-        .from('facturi_produse')
-        .select('stoc_id, cod, cantitate, produs_id')
-        .eq('factura_id', editFacturaId)
-
-      for (const linie of (liniiVechi ?? [])) {
-        if (linie.stoc_id) {
-          const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', linie.stoc_id).single()
-          if (s) await supabase.from('stoc').update({ cantitate: s.cantitate + linie.cantitate }).eq('id', linie.stoc_id)
-          continue
-        }
-        if (!linie.cod) continue
-        const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
-          .eq('produs_cod', linie.cod).order('updated_at', { ascending: true }).limit(1)
-        if (intrari?.length) {
-          await supabase.from('stoc').update({ cantitate: intrari[0].cantitate + linie.cantitate }).eq('id', intrari[0].id)
-        }
-      }
+      // Edit mode (nefinalizata): stocul NU se atinge — deducerea se face la emitere
+      // Doar șterge produsele vechi și inserează cele noi
 
       // Delete old products
       await supabase.from('facturi_produse').delete().eq('factura_id', editFacturaId)
@@ -535,25 +516,6 @@ function FacturarePageInner() {
         pret_achizitie: r.pret_achizitie,
         pret_vanzare: r.pret_vanzare,
       })))
-
-      // Deduct new stock (same logic as normal)
-      for (const r of randuri) {
-        let deScazut = r.cantitate
-        if (r.stoc_id) {
-          const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', r.stoc_id).single()
-          if (s) await supabase.from('stoc').update({ cantitate: Math.max(0, s.cantitate - deScazut) }).eq('id', r.stoc_id)
-          continue
-        }
-        if (!r.cod) continue
-        const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
-          .gt('cantitate', 0).eq('produs_cod', r.cod).order('updated_at', { ascending: true })
-        for (const intrare of (intrari ?? [])) {
-          if (deScazut <= 0) break
-          const scade = Math.min(deScazut, intrare.cantitate)
-          await supabase.from('stoc').update({ cantitate: intrare.cantitate - scade }).eq('id', intrare.id)
-          deScazut -= scade
-        }
-      }
 
       setSalvand(false)
       setView('lista')
@@ -602,9 +564,24 @@ function FacturarePageInner() {
       return
     }
 
-    // 3. Scade din stoc (FIFO)
-    for (const r of randuri) {
-      let deScazut = r.cantitate
+    // 3. Stocul se scade la EMITERE, nu la salvare ca nefinalizata
+
+    setSalvand(false)
+    setView('lista')
+  }
+
+  async function emiteFactura(id: string) {
+    setEmitandId(id)
+    const supabase = createClient()
+
+    // ── Scade stocul la emitere (FIFO) ──────────────────────────────────────
+    const { data: liniiEmitere } = await supabase
+      .from('facturi_produse')
+      .select('stoc_id, cod, cantitate')
+      .eq('factura_id', id)
+
+    for (const r of (liniiEmitere ?? [])) {
+      let deScazut = r.cantitate ?? 1
       if (r.stoc_id) {
         const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', r.stoc_id).single()
         if (s) await supabase.from('stoc').update({ cantitate: Math.max(0, s.cantitate - deScazut) }).eq('id', r.stoc_id)
@@ -620,14 +597,6 @@ function FacturarePageInner() {
         deScazut -= scade
       }
     }
-
-    setSalvand(false)
-    setView('lista')
-  }
-
-  async function emiteFactura(id: string) {
-    setEmitandId(id)
-    const supabase = createClient()
 
     // Încearcă trimitere Oblio dacă sunt credențiale configurate
     if (oblioSettings?.oblio_email && oblioSettings?.oblio_secret && oblioSettings?.cui && oblioSettings?.serie_factura) {
@@ -738,31 +707,11 @@ function FacturarePageInner() {
   }
 
   async function stergeNefinalizata(id: string) {
-    if (!confirm('Ștergi factura nefinalizată? Stocul va fi restituit.')) return
+    if (!confirm('Ștergi factura nefinalizată?')) return
     const supabase = createClient()
 
-    // Recuperează produsele facturii pentru a restitui stocul
-    const { data: linii } = await supabase
-      .from('facturi_produse')
-      .select('stoc_id, cod, cantitate, produs_id')
-      .eq('factura_id', id)
-
-    for (const linie of (linii ?? [])) {
-      if (linie.stoc_id) {
-        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', linie.stoc_id).single()
-        if (s) await supabase.from('stoc').update({ cantitate: s.cantitate + linie.cantitate }).eq('id', linie.stoc_id)
-        continue
-      }
-      if (!linie.cod) continue
-      // FIFO invers: adaugă înapoi la prima intrare cu acel cod
-      const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
-        .eq('produs_cod', linie.cod).order('updated_at', { ascending: true }).limit(1)
-      if (intrari?.length) {
-        await supabase.from('stoc').update({ cantitate: intrari[0].cantitate + linie.cantitate }).eq('id', intrari[0].id)
-      }
-    }
-
-    // Sterge factura (produsele se sterg automat prin CASCADE)
+    // Stocul NU a fost scăzut la salvare (se scade doar la emitere)
+    // Deci nu trebuie restituit — ștergem direct factura
     await supabase.from('facturi').delete().eq('id', id)
     loadFacturi()
   }
