@@ -678,6 +678,7 @@ function FacturarePageInner() {
           products: (produse ?? []).map(p => ({
             name: p.nume_produs,
             productType: 'Marfa',
+            management: '',
             measuringUnit: p.unitate || 'buc',
             quantity: p.cantitate,
             price: p.pret_vanzare,
