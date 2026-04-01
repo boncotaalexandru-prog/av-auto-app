@@ -54,6 +54,7 @@ interface ProfitRand {
 }
 
 interface FacProdRich {
+  factura_id: string
   produs: string
   cantitate: number
   pret_vanzare: number
@@ -196,6 +197,7 @@ export default function RapoartePage() {
             data_emitere: f?.data_emitere ?? '',
             client_denumire: f?.client_id ? (clientMap[f.client_id] ?? '(fără client)') : '(fără client)',
             factura_tip: f?.tip ?? 'normala',
+            factura_id: p.factura_id,
           }
         })
 
@@ -234,13 +236,14 @@ export default function RapoartePage() {
 
   const kpi = useMemo(() => {
     const active = oferteFiltered.filter(o => !['draft', 'anulata'].includes(o.status))
-    const facturate = oferteFiltered.filter(o => o.status === 'facturat')
+    const anulate = oferteFiltered.filter(o => o.status === 'anulata').length
+    const total = oferteFiltered.length
     const valFact = facturiProduseFiltered.reduce((s, p) => s + p.vanzari_nete, 0)
     const profitFact = facturiProduseFiltered.reduce((s, p) => s + p.profit, 0)
     const valStoc = stoc.reduce((s, i) => s + i.cantitate * i.pret_achizitie, 0)
-    const anulate = oferteFiltered.filter(o => o.status === 'anulata').length
-    const total = oferteFiltered.length
-    return { active: active.length, facturate: facturate.length, valFact, profitFact, valStoc, anulate, total }
+    // Număr facturi unice reale (nu oferte cu status facturat)
+    const facturiUnice = new Set(facturiProduseFiltered.map(p => p.factura_id)).size
+    return { active: active.length, facturate: facturiUnice, valFact, profitFact, valStoc, anulate, total }
   }, [oferteFiltered, facturiProduseFiltered, stoc])
 
   // ── Tab: Oferte ──────────────────────────────────────────────────────────
