@@ -176,6 +176,24 @@ export default function IncasariPage() {
           <input type="date" value={issuedBefore} onChange={e => setIssuedBefore(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="block text-xs font-semibold text-gray-600">Preset</label>
+          <div className="flex gap-2">
+            <button onClick={() => { const t = new Date().toISOString().slice(0, 10); setIssuedAfter(t); setIssuedBefore(t) }}
+              className="px-3 py-2 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
+              Azi
+            </button>
+            <button onClick={() => {
+              const now = new Date()
+              const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+              setIssuedAfter(firstDay)
+              setIssuedBefore(now.toISOString().slice(0, 10))
+            }}
+              className="px-3 py-2 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
+              Luna curentă
+            </button>
+          </div>
+        </div>
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
           <select value={filtruStatus} onChange={e => setFiltruStatus(e.target.value as typeof filtruStatus)}

@@ -108,12 +108,16 @@ export default function RapoartePage() {
   // Filtru perioadă
   const [perioada, setPerioada] = useState<'30' | '90' | '365' | 'toate'>('30')
 
-  // Filtru perioadă custom pentru profit pe produs
+  // Filtru perioadă custom pentru profit pe produs și vânzări
   const nowStr = new Date().toISOString().slice(0, 10)
   const firstOfMonth = new Date(); firstOfMonth.setDate(1)
-  const [profitDe, setProfitDe] = useState(firstOfMonth.toISOString().slice(0, 10))
+  const firstOfMonthStr = firstOfMonth.toISOString().slice(0, 10)
+  const [profitDe, setProfitDe] = useState(firstOfMonthStr)
   const [profitPana, setProfitPana] = useState(nowStr)
   const [profitSort, setProfitSort] = useState<'profit' | 'vanzari' | 'produs'>('profit')
+  // Filtru vânzări
+  const [vanzariDe, setVanzariDe] = useState(firstOfMonthStr)
+  const [vanzariPana, setVanzariPana] = useState(nowStr)
 
   useEffect(() => {
     async function load() {
@@ -224,13 +228,14 @@ export default function RapoartePage() {
     cutoff ? oferte.filter(o => o.created_at >= cutoff) : oferte
   , [oferte, cutoff])
 
-  // ── Tab: Vânzări — date din facturi reale ────────────────────────────────
+  // ── Tab: Vânzări — date din facturi reale (filtru propriu) ──────────────
 
   const facturiProduseFiltered = useMemo(() => {
-    if (!cutoff) return facturiProduseRich
-    const cutoffDate = cutoff.slice(0, 10)
-    return facturiProduseRich.filter(p => p.data_emitere >= cutoffDate)
-  }, [facturiProduseRich, cutoff])
+    return facturiProduseRich.filter(p =>
+      (!vanzariDe || p.data_emitere >= vanzariDe) &&
+      (!vanzariPana || p.data_emitere <= vanzariPana)
+    )
+  }, [facturiProduseRich, vanzariDe, vanzariPana])
 
   // ── KPI Cards ────────────────────────────────────────────────────────────
 
@@ -535,6 +540,31 @@ export default function RapoartePage() {
           {/* ════ TAB: VÂNZĂRI ══════════════════════════════════════════════ */}
           {tab === 'vanzari' && (
             <>
+              {/* Filtru perioadă vânzări */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">De la:</label>
+                  <input type="date" value={vanzariDe} onChange={e => setVanzariDe(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">Până la:</label>
+                  <input type="date" value={vanzariPana} onChange={e => setVanzariPana(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900" />
+                </div>
+                <div className="flex items-center gap-2 ml-2">
+                  <button onClick={() => { setVanzariDe(nowStr); setVanzariPana(nowStr) }}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
+                    Azi
+                  </button>
+                  <button onClick={() => { setVanzariDe(firstOfMonthStr); setVanzariPana(nowStr) }}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
+                    Luna curentă
+                  </button>
+                </div>
+                <span className="ml-auto text-xs text-gray-400">{facturiProduseFiltered.length} linii în perioadă</span>
+              </div>
+
               {/* Marjă pe clienți */}
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -644,6 +674,16 @@ export default function RapoartePage() {
                   <label className="text-sm font-medium text-gray-700">Până la:</label>
                   <input type="date" value={profitPana} onChange={e => setProfitPana(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setProfitDe(nowStr); setProfitPana(nowStr) }}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
+                    Azi
+                  </button>
+                  <button onClick={() => { setProfitDe(firstOfMonthStr); setProfitPana(nowStr) }}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
+                    Luna curentă
+                  </button>
                 </div>
                 <div className="flex items-center gap-2 ml-auto">
                   <label className="text-sm font-medium text-gray-700">Sortare:</label>

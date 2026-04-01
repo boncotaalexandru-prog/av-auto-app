@@ -1482,11 +1482,21 @@ function FacturarePageInner() {
       {/* Bara jos */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t-2 border-gray-200 px-6 py-4 flex items-center justify-between shadow-lg">
         <button onClick={() => setView('lista')} className="text-sm font-medium text-gray-700 hover:text-gray-900">← Înapoi</button>
-        <button onClick={verificaSiFactureaza} disabled={salvand || !clientId || randuri.length === 0}
-          className="px-8 py-2.5 text-white font-bold rounded-lg disabled:opacity-40 text-sm"
-          style={{ backgroundColor: '#0f172a' }}>
-          {salvand ? 'Se procesează...' : '💾 Salvează nefinalizată'}
-        </button>
+        <div className="flex items-center gap-3">
+          {editFacturaId && (
+            <button
+              onClick={async () => { await emiteFactura(editFacturaId); setView('lista') }}
+              disabled={salvand || emitandId === editFacturaId || !clientId || randuri.length === 0}
+              className="px-6 py-2.5 text-white font-bold rounded-lg disabled:opacity-40 text-sm bg-emerald-600 hover:bg-emerald-700">
+              {emitandId === editFacturaId ? '⏳ Se trimite...' : '🧾 Salvează și Emite'}
+            </button>
+          )}
+          <button onClick={verificaSiFactureaza} disabled={salvand || !clientId || randuri.length === 0}
+            className="px-8 py-2.5 text-white font-bold rounded-lg disabled:opacity-40 text-sm"
+            style={{ backgroundColor: '#0f172a' }}>
+            {salvand ? 'Se procesează...' : '💾 Salvează nefinalizată'}
+          </button>
+        </div>
       </div>
 
       {/* Modal adauga produs */}
