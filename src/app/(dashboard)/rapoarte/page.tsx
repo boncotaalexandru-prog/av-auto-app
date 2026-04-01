@@ -127,7 +127,7 @@ export default function RapoartePage() {
         supabase.from('profiles').select('id, full_name, email'),
         supabase.from('stoc').select('produs_nume, produs_cod, cantitate, pret_achizitie, pret_lista, furnizor_nume').order('produs_nume'),
         supabase.from('nir').select('id, numar, data_intrare, furnizor_nume, total_fara_tva, total_cu_tva').order('data_intrare', { ascending: false }).limit(200),
-        supabase.from('facturi').select('id, data_emitere, client_id, tip').order('data_emitere', { ascending: false }).limit(1000),
+        supabase.from('facturi').select('id, data_emitere, client_id, tip').in('status', ['emisa', 'platita', 'stornata']).order('data_emitere', { ascending: false }).limit(1000),
         supabase.from('facturi_produse').select('factura_id, nume_produs, cantitate, pret_vanzare, pret_achizitie').limit(10000),
       ])
 
