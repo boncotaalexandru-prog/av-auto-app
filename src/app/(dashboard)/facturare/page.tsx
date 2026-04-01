@@ -659,6 +659,8 @@ function FacturarePageInner() {
           seriesName: oblioSettings.serie_factura,
           currency: 'RON',
           language: 'RO',
+          isDraft: 0,          // finalizata direct, nu ciorna
+          useStock: 0,         // oblio nu descarca stoc propriu
           observations: factura?.observatii ?? '',
           internalNote: factura?.nota_interna ?? '',
           client: {
@@ -675,6 +677,7 @@ function FacturarePageInner() {
           },
           products: (produse ?? []).map(p => ({
             name: p.nume_produs,
+            productType: 'Marfa',
             measuringUnit: p.unitate || 'buc',
             quantity: p.cantitate,
             price: p.pret_vanzare,
