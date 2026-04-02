@@ -714,7 +714,7 @@ function FacturarePageInner() {
           language: 'RO',
           isDraft: 0,           // finalizata direct, nu ciorna
           useStock: 0,          // oblio nu descarca stoc propriu
-          observations: factura?.observatii ?? '',
+          mentions: factura?.observatii ?? '',
           internalNote: factura?.nota_interna ?? '',
           client: {
             cif: client?.cod_fiscal ?? '',

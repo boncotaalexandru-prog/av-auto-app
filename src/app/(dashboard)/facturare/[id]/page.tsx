@@ -56,6 +56,9 @@ export default function FacturaDetaliuPage() {
   const [oblioSettings, setOblioSettings] = useState<OblioSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [salvandStatus, setSalvandStatus] = useState(false)
+  const [observatiiEdit, setObservatiiEdit] = useState('')
+  const [notaInternaEdit, setNotaInternaEdit] = useState('')
+  const [salvandNote, setSalvandNote] = useState(false)
 
   useEffect(() => { load() }, [id])
 
@@ -71,6 +74,8 @@ export default function FacturaDetaliuPage() {
 
     const client = Array.isArray(f.clienti) ? f.clienti[0] : (f.clienti as { denumire: string } | null)
     setFactura({ ...f, tip: f.tip ?? 'normala', client_denumire: client?.denumire ?? '—' })
+    setObservatiiEdit(f.observatii ?? '')
+    setNotaInternaEdit(f.nota_interna ?? '')
 
     const { data: p } = await supabase.from('facturi_produse')
       .select('id, produs_id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
@@ -84,6 +89,17 @@ export default function FacturaDetaliuPage() {
     }
 
     setLoading(false)
+  }
+
+  async function salveazaNote() {
+    if (!factura) return
+    setSalvandNote(true)
+    await createClient().from('facturi').update({
+      observatii: observatiiEdit.trim() || null,
+      nota_interna: notaInternaEdit.trim() || null,
+    }).eq('id', id)
+    setFactura(f => f ? { ...f, observatii: observatiiEdit.trim() || null, nota_interna: notaInternaEdit.trim() || null } : f)
+    setSalvandNote(false)
   }
 
   async function schimbaStatus(nou: string) {
@@ -464,6 +480,56 @@ export default function FacturaDetaliuPage() {
           </tfoot>
         </table>
       </div>
+
+      {/* Observatii + Nota interna */}
+      {factura.status === 'nefinalizata' ? (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Observații <span className="text-xs font-normal text-gray-500">(apar pe factură)</span></label>
+            <textarea
+              value={observatiiEdit}
+              onChange={e => setObservatiiEdit(e.target.value)}
+              rows={3}
+              placeholder="ex: Conform comanda nr. 123..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none placeholder:text-gray-400"
+            />
+          </div>
+          <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Notă internă <span className="text-xs font-normal text-gray-500">(nu apare pe factură)</span></label>
+            <textarea
+              value={notaInternaEdit}
+              onChange={e => setNotaInternaEdit(e.target.value)}
+              rows={2}
+              placeholder="ex: Client verificat, plătitor lent..."
+              className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none placeholder:text-gray-400 bg-amber-50"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={salveazaNote}
+              disabled={salvandNote}
+              className="px-5 py-2 text-sm font-bold text-white bg-gray-900 hover:bg-gray-800 rounded-lg disabled:opacity-50"
+            >
+              {salvandNote ? 'Se salvează...' : 'Salvează note'}
+            </button>
+          </div>
+        </div>
+      ) : (factura.observatii || factura.nota_interna) ? (
+        <div className="space-y-3">
+          {factura.observatii && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-xs text-gray-500 mb-1">Observații (pe factură)</p>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap">{factura.observatii}</p>
+            </div>
+          )}
+          {factura.nota_interna && (
+            <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
+              <p className="text-xs text-gray-500 mb-1">Notă internă</p>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap">{factura.nota_interna}</p>
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }
