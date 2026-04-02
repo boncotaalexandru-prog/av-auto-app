@@ -765,6 +765,7 @@ export default function GestiunePage() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-2.5 text-gray-900 font-medium">Nr. NIR</th>
+                  <th className="text-left px-4 py-2.5 text-gray-900 font-medium">Nr. doc. furnizor</th>
                   <th className="text-left px-4 py-2.5 text-gray-900 font-medium">Data</th>
                   <th className="text-left px-4 py-2.5 text-gray-900 font-medium">Furnizor</th>
                   <th className="text-right px-4 py-2.5 text-gray-900 font-medium">Total fără TVA</th>
@@ -775,12 +776,13 @@ export default function GestiunePage() {
               </thead>
               <tbody>
                 {loadingNir ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-gray-600">Se încarcă...</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-gray-600">Se încarcă...</td></tr>
                 ) : nirList.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-gray-600">Niciun NIR înregistrat.</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-gray-600">Niciun NIR înregistrat.</td></tr>
                 ) : nirList.map(n => (
                   <tr key={n.id} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-2.5 font-semibold text-gray-900">NIR #{n.numar}</td>
+                    <td className="px-4 py-2.5 text-gray-900 font-mono">{n.numar_document || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-900">
                       {new Date(n.data_intrare).toLocaleDateString('ro-RO')}
                     </td>
