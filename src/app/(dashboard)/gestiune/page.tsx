@@ -267,8 +267,14 @@ export default function GestiunePage() {
   ) {
     for (const p of produse) {
       if (!p.produs_nume.trim() || p.cantitate === 0) continue
-      let stocQuery = supabase.from('stoc').select('id, cantitate').eq('produs_nume', p.produs_nume)
-      stocQuery = furnId ? stocQuery.eq('furnizor_id', furnId) : stocQuery.is('furnizor_id', null)
+      // Unicitatea e dată de COD (când există), nu de nume
+      let stocQuery = supabase.from('stoc').select('id, cantitate')
+      if (p.produs_cod?.trim()) {
+        stocQuery = stocQuery.eq('produs_cod', p.produs_cod.trim()) as typeof stocQuery
+      } else {
+        stocQuery = stocQuery.eq('produs_nume', p.produs_nume) as typeof stocQuery
+        stocQuery = (furnId ? stocQuery.eq('furnizor_id', furnId) : stocQuery.is('furnizor_id', null)) as typeof stocQuery
+      }
       const { data: stocEx } = await stocQuery.maybeSingle()
 
       const nouaCantitate = (stocEx?.cantitate ?? 0) + delta * p.cantitate
@@ -950,6 +956,9 @@ export default function GestiunePage() {
                                 </div>
                               )}
                             </div>
+                            {rand.produs_cod && (
+                              <p className="text-xs font-mono text-blue-700 mt-0.5">cod: {rand.produs_cod}</p>
+                            )}
                             {!rand.produs_id && (prodSearchMap[rand._key] ?? rand.produs_nume) && (
                               <input type="text" placeholder="Producător..."
                                 value={rand.producator}
