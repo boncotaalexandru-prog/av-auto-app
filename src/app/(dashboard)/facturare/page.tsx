@@ -189,6 +189,7 @@ function FacturarePageInner() {
   const [pretSpecial, setPretSpecial] = useState<number | null>(null)
   const [adaosModalInput, setAdaosModalInput] = useState('')
   const prodRef = useRef<HTMLDivElement>(null)
+  const salvandRef = useRef(false)
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [salvand, setSalvand] = useState(false)
   const [modalWarning, setModalWarning] = useState(false)
@@ -199,7 +200,7 @@ function FacturarePageInner() {
   function resetNou() {
     setClientSearch(''); setClientId(null); setRanduri([])
     setModal(false); setForm(emptyRand()); setProdSearch('')
-    setEditIdx(null); setSalvand(false)
+    setEditIdx(null); salvandRef.current = false; setSalvand(false)
     setDataEmitere(new Date().toISOString().slice(0, 10))
     setTermenPlata(0)
     setObservatii('')
@@ -555,6 +556,8 @@ function FacturarePageInner() {
 
   async function executaFacturare() {
     if (!clientId || randuri.length === 0) return
+    if (salvandRef.current) return
+    salvandRef.current = true
     setSalvand(true)
     const supabase = createClient()
 
@@ -592,7 +595,7 @@ function FacturarePageInner() {
         pret_vanzare: r.pret_vanzare,
       })))
 
-      setSalvand(false)
+      salvandRef.current = false; setSalvand(false)
       setView('lista')
       return
     }
@@ -615,7 +618,7 @@ function FacturarePageInner() {
 
     if (error || !factura) {
       alert('Eroare la creare factură: ' + error?.message)
-      setSalvand(false)
+      salvandRef.current = false; setSalvand(false)
       return
     }
 
@@ -635,13 +638,13 @@ function FacturarePageInner() {
 
     if (prodErr) {
       alert('Eroare la salvare produse: ' + prodErr.message)
-      setSalvand(false)
+      salvandRef.current = false; setSalvand(false)
       return
     }
 
     // 3. Stocul se scade la EMITERE, nu la salvare ca nefinalizata
 
-    setSalvand(false)
+    salvandRef.current = false; setSalvand(false)
     setView('lista')
   }
 
