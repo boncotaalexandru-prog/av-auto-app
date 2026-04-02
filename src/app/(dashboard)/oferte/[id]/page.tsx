@@ -39,7 +39,9 @@ interface Oferta {
   status: string
   necesar_piese: string | null
   client_id: string
+  masina_id: string | null
   preluat_de: string | null
+  oferta_partial_ref: string | null
   clienti: { denumire: string } | null
   clienti_masini: { nr_inmatriculare: string | null; marca: string | null; vin: string | null } | null
 }
@@ -79,12 +81,13 @@ interface ConfirmaRand {
 }
 
 const STATUS: Record<string, { label: string; color: string }> = {
-  draft:      { label: 'Oferta noua', color: '#16a34a' },
-  in_lucru:   { label: 'In lucru',    color: '#d97706' },
-  finalizata: { label: 'Finalizata',  color: '#059669' },
-  confirmata: { label: 'Confirmata',  color: '#7c3aed' },
-  facturat:   { label: 'Facturat',    color: '#0f172a' },
-  anulata:    { label: 'Anulata',     color: '#dc2626' },
+  draft:               { label: 'Oferta noua',        color: '#16a34a' },
+  in_lucru:            { label: 'In lucru',            color: '#d97706' },
+  finalizata:          { label: 'Finalizata',          color: '#059669' },
+  confirmata:          { label: 'Confirmata',          color: '#7c3aed' },
+  confirmata_partial:  { label: 'Confirmat Partial',   color: '#0891b2' },
+  facturat:            { label: 'Facturat',            color: '#0f172a' },
+  anulata:             { label: 'Anulata',             color: '#dc2626' },
 }
 
 const EMPTY_FORM = {
@@ -156,7 +159,7 @@ export default function OfertaPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('oferte')
-        .select('id, numar, status, necesar_piese, client_id, clienti(denumire), clienti_masini(nr_inmatriculare, marca, vin)')
+        .select('id, numar, status, necesar_piese, client_id, masina_id, preluat_de, oferta_partial_ref, clienti(denumire), clienti_masini(nr_inmatriculare, marca, vin)')
         .eq('id', id).single(),
       supabase.from('oferte_produse')
         .select('*, furnizori(denumire)')
@@ -468,16 +471,19 @@ export default function OfertaPage() {
     setConfirmand(true)
     const supabase = createClient()
 
-    // Insert in ridicari pentru fiecare rand inclus
-    const deRidicat = confirmaRanduri.filter(r => r.include)
-    console.log('[Confirmare] produse de ridicat:', deRidicat)
+    const bifate   = confirmaRanduri.filter(r => r.include)
+    const debifate = confirmaRanduri.filter(r => !r.include)
+    const estePartial = debifate.length > 0
 
-    if (deRidicat.length > 0) {
-      const payload = deRidicat.map(r => ({
-        oferta_id: id,
+    // Helper: creaza ridicari pentru o lista de randuri + oferta_id
+    async function insereazaRidicari(ofertaId: string, randuri: ConfirmaRand[]) {
+      const deRidicat = randuri.filter(r => r.furnizor_id !== null)
+      if (!deRidicat.length) return true
+      const { error } = await supabase.from('ridicari').insert(deRidicat.map(r => ({
+        oferta_id: ofertaId,
         oferta_produs_id: r.oferta_produs_id,
-        client_id: oferta.client_id || null,
-        client_nume: oferta.clienti?.denumire ?? null,
+        client_id: oferta!.client_id || null,
+        client_nume: oferta!.clienti?.denumire ?? null,
         nume_produs: r.nume_produs,
         producator: r.producator || null,
         cantitate: r.cantitate,
@@ -486,36 +492,85 @@ export default function OfertaPage() {
         furnizor_nume: r.furnizor_nume || null,
         ora_ridicare: r.ora_ridicare || null,
         data_livrare: r.data_livrare || null,
-      }))
-      const { error: errIns } = await supabase.from('ridicari').insert(payload)
-      if (errIns) {
-        console.error('[Confirmare] Eroare insert ridicari:', errIns)
-        alert(`Eroare la salvare ridicări: ${errIns.message}`)
+      })))
+      if (error) { alert(`Eroare la salvare ridicări: ${error.message}`); return false }
+      return true
+    }
+
+    if (!estePartial) {
+      // ── CONFIRMARE INTEGRALĂ ─────────────────────────────────────────────
+      const ok = await insereazaRidicari(id, bifate)
+      if (!ok) { setConfirmand(false); return }
+
+      // Actualizeaza pret_achizitie
+      await Promise.all(bifate.map(r =>
+        supabase.from('oferte_produse').update({ pret_achizitie: r.pret_achizitie }).eq('id', r.oferta_produs_id)
+      ))
+
+      const { error } = await supabase.from('oferte')
+        .update({ status: 'confirmata', updated_at: new Date().toISOString() }).eq('id', id)
+      if (error) { alert('Eroare actualizare status: ' + error.message); setConfirmand(false); return }
+
+      setOferta(o => o ? { ...o, status: 'confirmata' } : o)
+
+    } else {
+      // ── CONFIRMARE PARȚIALĂ ──────────────────────────────────────────────
+      // 1. Creează ofertă nouă cu produsele bifate, status confirmata
+      const { data: ofertaNoua, error: errNoua } = await supabase.from('oferte').insert({
+        client_id: oferta.client_id,
+        masina_id: oferta.masina_id || null,
+        necesar_piese: oferta.necesar_piese || null,
+        preluat_de: oferta.preluat_de || null,
+        status: 'confirmata',
+      }).select('id').single()
+
+      if (errNoua || !ofertaNoua) {
+        alert('Eroare la creare ofertă parțială: ' + errNoua?.message)
         setConfirmand(false)
         return
       }
+
+      // 2. Copiaza produsele bifate (cu pret_achizitie actualizat) în oferta nouă
+      const produseMap: Record<string, OfertaProdus> = {}
+      produse.forEach(p => { produseMap[p.id] = p })
+
+      await supabase.from('oferte_produse').insert(
+        bifate.map(r => {
+          const p = produseMap[r.oferta_produs_id]
+          return {
+            oferta_id: ofertaNoua.id,
+            produs_id: p?.produs_id ?? null,
+            stoc_id: p?.stoc_id ?? null,
+            nume_produs: r.nume_produs,
+            cod: p?.cod ?? null,
+            cantitate: r.cantitate,
+            unitate: r.unitate || null,
+            pret_achizitie: r.pret_achizitie,
+            pret_vanzare: p?.pret_vanzare ?? 0,
+            furnizor_id: r.furnizor_id || null,
+            disponibil: p?.disponibil ?? true,
+            producator: r.producator || null,
+            ora_ridicare: r.ora_ridicare || null,
+            data_livrare: r.data_livrare || null,
+          }
+        })
+      )
+
+      // 3. Crează ridicările pentru oferta nouă
+      const ok = await insereazaRidicari(ofertaNoua.id, bifate)
+      if (!ok) { setConfirmand(false); return }
+
+      // 4. Marchează oferta originală confirmata_partial + referință
+      const { error: errOrig } = await supabase.from('oferte').update({
+        status: 'confirmata_partial',
+        oferta_partial_ref: ofertaNoua.id,
+        updated_at: new Date().toISOString(),
+      }).eq('id', id)
+      if (errOrig) { alert('Eroare actualizare status: ' + errOrig.message); setConfirmand(false); return }
+
+      setOferta(o => o ? { ...o, status: 'confirmata_partial', oferta_partial_ref: ofertaNoua.id } : o)
     }
 
-    // Actualizeaza pret_achizitie pe fiecare linie de oferta (poate fi modificat in modal)
-    await Promise.all(confirmaRanduri.map(r =>
-      supabase.from('oferte_produse')
-        .update({ pret_achizitie: r.pret_achizitie })
-        .eq('id', r.oferta_produs_id)
-    ))
-
-    // Schimba status la confirmata
-    const { error: errStatus } = await supabase.from('oferte')
-      .update({ status: 'confirmata', updated_at: new Date().toISOString() })
-      .eq('id', id)
-
-    if (errStatus) {
-      console.error('[Confirmare] Eroare update status:', errStatus)
-      alert(`Eroare la actualizare status: ${errStatus.message}`)
-      setConfirmand(false)
-      return
-    }
-
-    setOferta(o => o ? { ...o, status: 'confirmata' } : o)
     setConfirmand(false)
     setModalConfirma(false)
   }
@@ -578,7 +633,7 @@ export default function OfertaPage() {
                     ▶ Preia Oferta
                   </button>
                 )}
-                {['confirmata', 'finalizata', 'anulata'].includes(oferta.status) && (
+                {['confirmata', 'confirmata_partial', 'finalizata', 'anulata'].includes(oferta.status) && (
                   <button
                     onClick={() => updateStatus('in_lucru')}
                     disabled={actualizand}
@@ -587,6 +642,25 @@ export default function OfertaPage() {
                   >
                     ✏ Editeaza Oferta
                   </button>
+                )}
+                {oferta.status === 'finalizata' && (
+                  <button
+                    onClick={() => { if (confirm('Anulezi oferta?')) updateStatus('anulata') }}
+                    disabled={actualizand}
+                    className="px-4 py-1.5 text-white text-sm font-bold rounded-lg disabled:opacity-50"
+                    style={{ backgroundColor: '#dc2626' }}
+                  >
+                    ✕ Anulează
+                  </button>
+                )}
+                {oferta.status === 'confirmata_partial' && oferta.oferta_partial_ref && (
+                  <a
+                    href={`/oferte/${oferta.oferta_partial_ref}`}
+                    className="px-4 py-1.5 text-white text-sm font-bold rounded-lg no-underline"
+                    style={{ backgroundColor: '#0891b2' }}
+                  >
+                    → Vezi oferta confirmată
+                  </a>
                 )}
                 {oferta.status === 'facturat' && (
                   <span className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white" style={{ backgroundColor: '#0f172a' }}>
