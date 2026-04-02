@@ -70,6 +70,7 @@ interface ConfirmaRand {
   producator: string | null
   cantitate: number
   unitate: string | null
+  pret_achizitie: number
   furnizor_id: string | null
   furnizor_nume: string
   ora_ridicare: string
@@ -450,6 +451,7 @@ export default function OfertaPage() {
         producator: p.producator,
         cantitate: p.cantitate,
         unitate: p.unitate,
+        pret_achizitie: p.pret_achizitie ?? 0,
         furnizor_id: p.furnizor_id,
         furnizor_nume: furnNume,
         ora_ridicare: (p as unknown as { ora_ridicare: string | null }).ora_ridicare ?? '',
@@ -493,6 +495,13 @@ export default function OfertaPage() {
         return
       }
     }
+
+    // Actualizeaza pret_achizitie pe fiecare linie de oferta (poate fi modificat in modal)
+    await Promise.all(confirmaRanduri.map(r =>
+      supabase.from('oferte_produse')
+        .update({ pret_achizitie: r.pret_achizitie })
+        .eq('id', r.oferta_produs_id)
+    ))
 
     // Schimba status la confirmata
     const { error: errStatus } = await supabase.from('oferte')
@@ -850,9 +859,25 @@ export default function OfertaPage() {
                     />
                     <div className="flex-1 space-y-3">
                       {/* Produs info */}
-                      <div>
-                        <p className="font-semibold text-gray-900">{rand.nume_produs}</p>
-                        <p className="text-xs text-gray-600">{rand.cantitate} {rand.unitate || 'buc'}{rand.producator ? ` · ${rand.producator}` : ''}</p>
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-semibold text-gray-900">{rand.nume_produs}</p>
+                          <p className="text-xs text-gray-600">{rand.cantitate} {rand.unitate || 'buc'}{rand.producator ? ` · ${rand.producator}` : ''}</p>
+                        </div>
+                        {/* Pret achizitie editabil */}
+                        <div className="flex-shrink-0">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Preț achiziție</label>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number" min="0" step="0.01"
+                              value={rand.pret_achizitie || ''}
+                              onChange={e => setConfirmaRanduri(prev => prev.map((r, i) => i === idx ? { ...r, pret_achizitie: parseFloat(e.target.value) || 0 } : r))}
+                              className="w-28 px-2 py-1.5 border border-purple-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              placeholder="0.00"
+                            />
+                            <span className="text-xs text-gray-500">RON</span>
+                          </div>
+                        </div>
                       </div>
                       {rand.include && (
                         <div className="grid grid-cols-3 gap-3">
