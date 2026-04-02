@@ -268,14 +268,13 @@ export default function GestiunePage() {
     for (const p of produse) {
       if (!p.produs_nume.trim() || p.cantitate === 0) continue
       // Unicitatea e dată de COD (când există), nu de nume
-      let stocQuery = supabase.from('stoc').select('id, cantitate')
-      if (p.produs_cod?.trim()) {
-        stocQuery = stocQuery.eq('produs_cod', p.produs_cod.trim()) as typeof stocQuery
-      } else {
-        stocQuery = stocQuery.eq('produs_nume', p.produs_nume) as typeof stocQuery
-        stocQuery = (furnId ? stocQuery.eq('furnizor_id', furnId) : stocQuery.is('furnizor_id', null)) as typeof stocQuery
-      }
-      const { data: stocEx } = await stocQuery.maybeSingle()
+      const cod = p.produs_cod?.trim()
+      const { data: stocEx } = await (cod
+        ? supabase.from('stoc').select('id, cantitate').eq('produs_cod', cod).maybeSingle()
+        : furnId
+          ? supabase.from('stoc').select('id, cantitate').eq('produs_nume', p.produs_nume).eq('furnizor_id', furnId).maybeSingle()
+          : supabase.from('stoc').select('id, cantitate').eq('produs_nume', p.produs_nume).is('furnizor_id', null).maybeSingle()
+      )
 
       const nouaCantitate = (stocEx?.cantitate ?? 0) + delta * p.cantitate
 
