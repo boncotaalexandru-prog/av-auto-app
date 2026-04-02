@@ -25,7 +25,6 @@ const EMPTY = {
   nume: '',
   producator: '',
   unitate: '',
-  pret: '',
 }
 
 export default function ProdusNouModal({ open, onClose, onSaved, numeInitial }: Props) {
@@ -52,7 +51,6 @@ export default function ProdusNouModal({ open, onClose, onSaved, numeInitial }: 
         nume: form.nume.trim(),
         producator: form.producator.trim() || null,
         unitate: form.unitate.trim() || null,
-        pret: form.pret ? parseFloat(form.pret) : null,
       })
       .select('id, cod, nume, producator, unitate, pret')
       .single()
@@ -131,19 +129,6 @@ export default function ProdusNouModal({ open, onClose, onSaved, numeInitial }: 
             />
           </div>
 
-          {/* Pret lista */}
-          <div>
-            <label className="block text-sm font-medium text-gray-900 mb-1.5">Pret lista (RON)</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.pret}
-              onChange={e => setForm(f => ({ ...f, pret: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="0.00"
-            />
-          </div>
         </div>
 
         {/* Footer */}

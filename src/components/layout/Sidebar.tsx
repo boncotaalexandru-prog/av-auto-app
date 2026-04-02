@@ -21,6 +21,7 @@ const navItems: NavItem[] = [
   { label: 'Gestiune',         href: '/gestiune',         icon: '🏪' },
   { label: 'Clienti',          href: '/clienti',          icon: '👥' },
   { label: 'Produse',          href: '/produse',          icon: '📦' },
+  { label: 'Echivalente',      href: '/echivalente',      icon: '🔄' },
   { label: 'Furnizori',        href: '/furnizori',        icon: '🏭' },
   { label: 'Încasări',         href: '/incasari',         icon: '💰', adminOnly: true },
   { label: 'Rapoarte',         href: '/rapoarte',         icon: '📊', adminOnly: true },

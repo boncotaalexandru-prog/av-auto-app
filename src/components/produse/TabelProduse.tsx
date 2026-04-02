@@ -8,14 +8,12 @@ interface Produs {
   id: string
   cod: string | null
   nume: string
-  pret: number | null
   unitate: string | null
   producator: string | null
 }
 
 interface EditRow {
   id: string
-  pret: string
   producator: string
 }
 
@@ -39,7 +37,7 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
 
     let query = supabase
       .from('produse')
-      .select('id, cod, nume, pret, unitate, producator', { count: 'exact' })
+      .select('id, cod, nume, unitate, producator', { count: 'exact' })
       .order('nume')
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
@@ -58,14 +56,12 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
     setSaving(true)
     const supabase = createClient()
     await supabase.from('produse').update({
-      pret: editing.pret ? parseFloat(editing.pret) : null,
       producator: editing.producator || null,
       updated_at: new Date().toISOString(),
     }).eq('id', editing.id)
     setSaving(false)
     setEditing(null)
-    // Refresh row
-    const { data } = await supabase.from('produse').select('id,cod,nume,pret,unitate,producator').eq('id', editing.id).single()
+    const { data } = await supabase.from('produse').select('id,cod,nume,unitate,producator').eq('id', editing.id).single()
     if (data) setProduse(prev => prev.map(p => p.id === data.id ? data : p))
   }
 
@@ -97,7 +93,6 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                   <th className="text-left px-4 py-3 text-gray-900 font-medium">Cod</th>
                   <th className="text-left px-4 py-3 text-gray-900 font-medium">Producator</th>
                   <th className="text-left px-4 py-3 text-gray-900 font-medium">UM</th>
-                  <th className="text-left px-4 py-3 text-gray-900 font-medium">Pret lista</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -121,20 +116,6 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-gray-900">{p.unitate || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-900">
-                      {editing?.id === p.id ? (
-                        <input
-                          type="number"
-                          value={editing.pret}
-                          onChange={e => setEditing({ ...editing, pret: e.target.value })}
-                          className="w-24 px-2 py-1 border border-blue-400 rounded text-sm text-gray-900"
-                          placeholder="0.00"
-                          step="0.01"
-                        />
-                      ) : (
-                        p.pret != null ? `${p.pret} RON` : <span className="text-gray-900">—</span>
-                      )}
-                    </td>
                     <td className="px-4 py-2.5 text-right">
                       {editing?.id === p.id ? (
                         <div className="flex gap-2 justify-end">
@@ -155,7 +136,7 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                       ) : (
                         <div className="flex gap-2 justify-end">
                           <button
-                            onClick={() => setEditing({ id: p.id, pret: p.pret?.toString() ?? '', producator: p.producator ?? '' })}
+                            onClick={() => setEditing({ id: p.id, producator: p.producator ?? '' })}
                             className="text-xs text-blue-600 hover:underline"
                           >
                             Editeaza

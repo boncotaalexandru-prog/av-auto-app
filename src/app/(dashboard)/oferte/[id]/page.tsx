@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
+import EchivalentePopover from '@/components/produse/EchivalentePopover'
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -60,6 +61,7 @@ interface OfertaProdus {
   furnizori: { denumire: string } | null
   disponibil: boolean
   producator: string | null
+  produse: { id: string; grup_echivalente_id: string | null } | null
 }
 
 interface ProdusSearch { id: string; cod: string | null; nume: string; unitate: string | null; pret: number | null; producator: string | null }
@@ -162,7 +164,7 @@ export default function OfertaPage() {
         .select('id, numar, status, necesar_piese, client_id, masina_id, preluat_de, oferta_partial_ref, clienti(denumire), clienti_masini(nr_inmatriculare, marca, vin)')
         .eq('id', id).single(),
       supabase.from('oferte_produse')
-        .select('*, furnizori(denumire)')
+        .select('*, furnizori(denumire), produse(id, grup_echivalente_id)')
         .eq('oferta_id', id)
         .order('created_at'),
     ]).then(([{ data: o }, { data: p }]) => {
@@ -753,7 +755,30 @@ export default function OfertaPage() {
               ) : produse.map((p, i) => (
                 <tr key={p.id} className="border-t border-gray-200">
                   <td className="px-2 py-2.5 text-center text-xs text-gray-400 font-medium">{i + 1}</td>
-                  <td className="px-4 py-2.5 text-gray-900 font-medium">{p.nume_produs}</td>
+                  <td className="px-4 py-2.5 text-gray-900 font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <span>{p.nume_produs}</span>
+                      <EchivalentePopover
+                        produsId={p.produs_id}
+                        grupEchivalenteId={p.produse?.grup_echivalente_id ?? null}
+                        ofertaProdusId={p.id}
+                        isEditMode={oferta.status === 'in_lucru'}
+                        onRefresh={() => {
+                          createClient().from('oferte_produse')
+                            .select('*, furnizori(denumire), produse(id, grup_echivalente_id)')
+                            .eq('oferta_id', id).order('created_at')
+                            .then(({ data }) => setProduse((data as OfertaProdus[]) ?? []))
+                        }}
+                        onGrupChanged={newGrupId => {
+                          setProduse(prev => prev.map(r =>
+                            r.id === p.id
+                              ? { ...r, produse: r.produse ? { ...r.produse, grup_echivalente_id: newGrupId } : { id: r.produs_id ?? '', grup_echivalente_id: newGrupId } }
+                              : r
+                          ))
+                        }}
+                      />
+                    </div>
+                  </td>
                   <td className="px-4 py-2.5 text-gray-900">{p.producator || '—'}</td>
                   <td className="px-4 py-2.5 text-gray-900">{p.cantitate}</td>
                   <td className="px-4 py-2.5 text-gray-900">{p.unitate || '—'}</td>
