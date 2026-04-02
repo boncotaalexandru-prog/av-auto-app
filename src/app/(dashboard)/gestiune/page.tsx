@@ -911,6 +911,7 @@ export default function GestiunePage() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="text-left px-3 py-2 text-gray-900 font-medium w-72">Produs</th>
+                        <th className="text-left px-3 py-2 text-gray-900 font-medium w-28">Cod</th>
                         <th className="text-left px-3 py-2 text-gray-900 font-medium w-24">Cant.</th>
                         <th className="text-left px-3 py-2 text-gray-900 font-medium w-16">UM</th>
                         <th className="text-right px-3 py-2 text-gray-900 font-medium w-28">Preț fără TVA</th>
@@ -955,9 +956,6 @@ export default function GestiunePage() {
                                 </div>
                               )}
                             </div>
-                            {rand.produs_cod && (
-                              <p className="text-xs font-mono text-blue-700 mt-0.5">cod: {rand.produs_cod}</p>
-                            )}
                             {!rand.produs_id && (prodSearchMap[rand._key] ?? rand.produs_nume) && (
                               <input type="text" placeholder="Producător..."
                                 value={rand.producator}
@@ -973,6 +971,15 @@ export default function GestiunePage() {
                                 </p>
                               )
                             })()}
+                          </td>
+                          {/* Cod */}
+                          <td className="px-3 py-2">
+                            <input type="text"
+                              value={rand.produs_cod ?? ''}
+                              onChange={e => setNirProduse(p => p.map(r => r._key === rand._key ? { ...r, produs_cod: e.target.value } : r))}
+                              placeholder="—"
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono text-blue-800 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
                           </td>
                           {/* Cantitate */}
                           <td className="px-3 py-2">
