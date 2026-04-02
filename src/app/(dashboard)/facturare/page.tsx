@@ -282,6 +282,81 @@ function FacturarePageInner() {
     preloadOferta()
   }, [searchParams])
 
+  // Precompletare din MULTIPLE oferte (daca vine cu ?oferta_ids=id1,id2,...)
+  useEffect(() => {
+    const ofertaIdsParam = searchParams.get('oferta_ids')
+    if (!ofertaIdsParam) return
+
+    const ids = ofertaIdsParam.split(',').map(s => s.trim()).filter(Boolean)
+    if (ids.length === 0) return
+
+    async function preloadOferteCumulate() {
+      const supabase = createClient()
+
+      // Incarca prima oferta pentru client
+      const { data: primeOferta } = await supabase
+        .from('oferte')
+        .select('id, client_id, clienti(denumire)')
+        .eq('id', ids[0])
+        .single()
+      if (!primeOferta) return
+
+      const client = Array.isArray(primeOferta.clienti) ? primeOferta.clienti[0] : (primeOferta.clienti as { denumire: string } | null)
+      setClientId(primeOferta.client_id)
+      setClientSearch(client?.denumire ?? '')
+      const { data: cl } = await supabase.from('clienti').select('termen_plata').eq('id', primeOferta.client_id).single()
+      setTermenPlata(cl?.termen_plata ?? 1)
+
+      // Incarca produsele din toate ofertele
+      const { data: opRows } = await supabase
+        .from('oferte_produse')
+        .select('id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare, produs_id, stoc_id')
+        .in('oferta_id', ids)
+      if (!opRows?.length) { setView('nou'); return }
+
+      const randuriFilled: RandFactura[] = await Promise.all(opRows.map(async (p) => {
+        const orParts: string[] = []
+        if (p.produs_id) orParts.push(`produs_id.eq.${p.produs_id}`)
+        if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
+
+        let optiuni: StocOptiune[] = []
+        if (orParts.length > 0) {
+          const { data: stocRows } = await supabase.from('stoc')
+            .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume')
+            .gt('cantitate', 0).or(orParts.join(','))
+            .order('updated_at', { ascending: true })
+          optiuni = (stocRows ?? []) as StocOptiune[]
+        }
+
+        const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
+        const idxInOptiuni = p.stoc_id ? optiuni.findIndex(o => o.id === p.stoc_id) : 0
+        const stocIdx = idxInOptiuni >= 0 ? idxInOptiuni : 0
+        const optSelec = optiuni[stocIdx]
+
+        return {
+          _key: Math.random().toString(36).slice(2),
+          produs_id: p.produs_id ?? null,
+          stoc_id: optSelec?.id ?? p.stoc_id ?? null,
+          nume_produs: p.nume_produs ?? '',
+          cod: p.cod ?? '',
+          producator: p.producator ?? '',
+          unitate: p.unitate ?? 'buc',
+          cantitate: p.cantitate ?? 1,
+          pret_achizitie: optSelec?.pret_achizitie ?? p.pret_achizitie ?? 0,
+          pret_vanzare: p.pret_vanzare ?? 0,
+          stoc_disponibil: totalDisponibil,
+          stoc_optiuni: optiuni,
+          stoc_idx: stocIdx,
+        }
+      }))
+
+      setRanduri(randuriFilled)
+      setView('nou')
+    }
+
+    preloadOferteCumulate()
+  }, [searchParams])
+
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (clientRef.current && !clientRef.current.contains(e.target as Node)) setShowClientList(false)

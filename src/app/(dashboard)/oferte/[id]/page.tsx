@@ -882,7 +882,7 @@ export default function OfertaPage() {
               className="px-6 py-2.5 text-white font-bold rounded-lg disabled:opacity-50 text-sm"
               style={{ backgroundColor: '#0f172a' }}
             >
-              🧾 Emite factură
+              🧾 Generează factură
             </button>
           </div>
         </div>

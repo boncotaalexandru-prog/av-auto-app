@@ -11,6 +11,7 @@ interface Oferta {
   necesar_piese: string | null
   created_at: string
   preluat_de: string | null
+  client_id: string | null
   clienti: { denumire: string } | null
   clienti_masini: { nr_inmatriculare: string | null; marca: string | null } | null
 }
@@ -32,6 +33,7 @@ export default function OferteP() {
   const [loading, setLoading] = useState(_cache.length === 0)
   const [refresh, setRefresh] = useState(0)
   const [preluand, setPreluand] = useState<string | null>(null)
+  const [selectate, setSelectate] = useState<Set<string>>(new Set())
 
   // Filtre
   const [filtruStatus, setFiltruStatus] = useState<string>('toate')
@@ -42,7 +44,7 @@ export default function OferteP() {
   useEffect(() => {
     createClient()
       .from('oferte')
-      .select('id, status, necesar_piese, created_at, preluat_de, clienti(denumire), clienti_masini(nr_inmatriculare, marca)')
+      .select('id, status, necesar_piese, created_at, preluat_de, client_id, clienti(denumire), clienti_masini(nr_inmatriculare, marca)')
       .order('created_at', { ascending: false })
       .limit(200)
       .then(({ data }) => {
@@ -89,6 +91,25 @@ export default function OferteP() {
   }
 
   const filtreleActive = filtruStatus !== 'toate' || filtruClient !== ''
+
+  // Selectie cumulata
+  const oferteSelectate = oferteAfisate.filter(o => selectate.has(o.id))
+  const clientIdsSelectate = new Set(oferteSelectate.map(o => o.client_id))
+  const acelsiClient = clientIdsSelectate.size <= 1
+  const poateGeneraCumulat = oferteSelectate.length >= 2 && acelsiClient
+
+  function toggleSelectie(id: string) {
+    setSelectate(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function genereazaFacturaCumulata() {
+    const ids = Array.from(selectate).join(',')
+    router.push(`/facturare?oferta_ids=${ids}`)
+  }
 
   return (
     <div className="space-y-6">
@@ -152,6 +173,34 @@ export default function OferteP() {
         </div>
       </div>
 
+      {/* Toolbar selectie cumulata */}
+      {selectate.size > 0 && (
+        <div className="flex items-center gap-4 px-4 py-3 bg-purple-50 border border-purple-200 rounded-xl">
+          <span className="text-sm font-medium text-purple-800">
+            {selectate.size} {selectate.size === 1 ? 'ofertă selectată' : 'oferte selectate'}
+          </span>
+          {!acelsiClient && selectate.size >= 2 && (
+            <span className="text-xs text-red-600 font-medium">⚠ Ofertele trebuie să fie de la același client</span>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => setSelectate(new Set())}
+              className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Deselectează
+            </button>
+            <button
+              onClick={genereazaFacturaCumulata}
+              disabled={!poateGeneraCumulat}
+              className="px-4 py-1.5 text-xs font-bold text-white rounded-lg disabled:opacity-40"
+              style={{ backgroundColor: '#0f172a' }}
+            >
+              🧾 Generează factură cumulată
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Contor rezultate */}
       {filtreleActive && (
         <p className="text-sm text-gray-500">
@@ -170,6 +219,7 @@ export default function OferteP() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="w-10 px-4 py-3" />
                 <th className="text-left px-4 py-3 text-gray-700 font-medium">Client</th>
                 <th className="text-left px-4 py-3 text-gray-700 font-medium">Masina</th>
                 <th className="text-left px-4 py-3 text-gray-700 font-medium">Necesar</th>
@@ -185,8 +235,19 @@ export default function OferteP() {
                   <tr
                     key={o.id}
                     onClick={() => router.push(`/oferte/${o.id}`)}
-                    className="border-t border-gray-200 hover:bg-blue-50 cursor-pointer transition-colors"
+                    className={`border-t border-gray-200 hover:bg-blue-50 cursor-pointer transition-colors ${selectate.has(o.id) ? 'bg-purple-50' : ''}`}
                   >
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      {o.status === 'confirmata' && (
+                        <input
+                          type="checkbox"
+                          checked={selectate.has(o.id)}
+                          onChange={() => toggleSelectie(o.id)}
+                          onClick={e => e.stopPropagation()}
+                          className="w-4 h-4 accent-purple-600 cursor-pointer"
+                        />
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {o.clienti?.denumire ?? '—'}
                     </td>
