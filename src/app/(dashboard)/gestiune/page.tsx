@@ -897,12 +897,8 @@ export default function GestiunePage() {
 
               {/* Produse */}
               <div>
-                <div className="flex items-center justify-between mb-2">
+                <div className="mb-2">
                   <label className="text-sm font-medium text-gray-900">Produse</label>
-                  <button onClick={() => setNirProduse(p => [...p, emptyProdus()])}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium">
-                    + Adaugă rând
-                  </button>
                 </div>
 
                 <div className="border border-gray-200 rounded-lg overflow-visible">
@@ -1007,6 +1003,10 @@ export default function GestiunePage() {
                     </tbody>
                   </table>
                 </div>
+                <button onClick={() => setNirProduse(p => [...p, emptyProdus()])}
+                  className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50 w-full">
+                  + Adaugă rând
+                </button>
               </div>
 
               {/* Totale + verificare factură */}
