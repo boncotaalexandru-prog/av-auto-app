@@ -726,6 +726,7 @@ export default function OfertaPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="text-center px-2 py-2.5 text-gray-400 font-medium w-8">#</th>
                 <th className="text-left px-4 py-2.5 text-gray-900 font-medium">Produs</th>
                 <th className="text-left px-4 py-2.5 text-gray-900 font-medium">Producator</th>
                 <th className="text-left px-4 py-2.5 text-gray-900 font-medium">Cant.</th>
@@ -749,8 +750,9 @@ export default function OfertaPage() {
                     Niciun produs adaugat. Apasa &quot;Adauga Produs&quot;.
                   </td>
                 </tr>
-              ) : produse.map(p => (
+              ) : produse.map((p, i) => (
                 <tr key={p.id} className="border-t border-gray-200">
+                  <td className="px-2 py-2.5 text-center text-xs text-gray-400 font-medium">{i + 1}</td>
                   <td className="px-4 py-2.5 text-gray-900 font-medium">{p.nume_produs}</td>
                   <td className="px-4 py-2.5 text-gray-900">{p.producator || '—'}</td>
                   <td className="px-4 py-2.5 text-gray-900">{p.cantitate}</td>

@@ -1479,6 +1479,7 @@ function FacturarePageInner() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-400 w-8">#</th>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-700">Produs</th>
                 <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Cant.</th>
                 <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-700">Preț vânz.</th>
@@ -1492,6 +1493,7 @@ function FacturarePageInner() {
             <tbody>
               {randuri.map((r, i) => (
                 <tr key={r._key} className="border-t border-gray-100">
+                  <td className="px-3 py-3 text-center text-xs text-gray-400 font-medium">{i + 1}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {r.stoc_disponibil === 0 && <span title="Nu este în stoc" className="text-red-500 text-xs font-bold">⚠</span>}

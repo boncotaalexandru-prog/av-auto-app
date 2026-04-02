@@ -910,6 +910,7 @@ export default function GestiunePage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="text-center px-2 py-2 text-gray-400 font-medium w-8">#</th>
                         <th className="text-left px-3 py-2 text-gray-900 font-medium w-72">Produs</th>
                         <th className="text-left px-3 py-2 text-gray-900 font-medium w-28">Cod</th>
                         <th className="text-left px-3 py-2 text-gray-900 font-medium w-24">Cant.</th>
@@ -922,6 +923,7 @@ export default function GestiunePage() {
                     <tbody>
                       {nirProduse.map((rand, idx) => (
                         <tr key={rand._key} className="border-t border-gray-100">
+                          <td className="px-2 py-2 text-center text-xs text-gray-400 font-medium">{idx + 1}</td>
                           {/* Produs search */}
                           <td className="px-3 py-2">
                             <div className="relative">
