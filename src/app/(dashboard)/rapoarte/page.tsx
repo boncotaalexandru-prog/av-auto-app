@@ -183,8 +183,8 @@ export default function RapoartePage() {
       }))
 
       // Randuri îmbogățite cu client și tip (pentru vânzări)
+      // Storno-urile au cantitate negativa — le includem ca sa scada corect din totaluri
       const fpRich: FacProdRich[] = (fpRaw.data ?? [])
-        .filter((p: { cantitate: number }) => (p.cantitate ?? 0) > 0)  // exclude storno (cantitate negativa)
         .map((p: { factura_id: string; nume_produs: string; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => {
           const f = facturaMap[p.factura_id]
           const cant = p.cantitate ?? 1
