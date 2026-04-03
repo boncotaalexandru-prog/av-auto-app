@@ -499,15 +499,15 @@ export default function OfertaPage() {
       return true
     }
 
+    // ── Salvează pret_achizitie modificat pentru TOATE rândurile ──────────
+    await Promise.all(confirmaRanduri.map(r =>
+      supabase.from('oferte_produse').update({ pret_achizitie: r.pret_achizitie }).eq('id', r.oferta_produs_id)
+    ))
+
     if (!estePartial) {
       // ── CONFIRMARE INTEGRALĂ ─────────────────────────────────────────────
       const ok = await insereazaRidicari(id, bifate)
       if (!ok) { setConfirmand(false); return }
-
-      // Actualizeaza pret_achizitie
-      await Promise.all(bifate.map(r =>
-        supabase.from('oferte_produse').update({ pret_achizitie: r.pret_achizitie }).eq('id', r.oferta_produs_id)
-      ))
 
       const { error } = await supabase.from('oferte')
         .update({ status: 'confirmata', updated_at: new Date().toISOString() }).eq('id', id)
@@ -575,6 +575,13 @@ export default function OfertaPage() {
 
     setConfirmand(false)
     setModalConfirma(false)
+
+    // Reîncarcă produsele ca UI-ul să reflecte prețurile actualizate
+    const { data: prodsNoi } = await supabase.from('oferte_produse')
+      .select('*, furnizori(denumire), produse(id, grup_echivalente_id)')
+      .eq('oferta_id', id)
+      .order('created_at')
+    if (prodsNoi) setProduse(prodsNoi as OfertaProdus[])
   }
 
   async function updateStatus(nou: string) {
