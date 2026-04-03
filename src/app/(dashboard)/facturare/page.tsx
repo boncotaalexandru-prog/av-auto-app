@@ -741,7 +741,7 @@ function FacturarePageInner() {
             management: 'Gestiune AV Auto',
             measuringUnit: p.unitate || 'buc',
             quantity: p.cantitate,
-            price: p.pret_vanzare,
+            price: parseFloat((p.pret_vanzare * 1.21).toFixed(4)), // Oblio asteapta pretul CU TVA inclus
             vatName: 'Normala',
             vatPercentage: 21,
             isDiscount: false,
@@ -1143,7 +1143,7 @@ function FacturarePageInner() {
                       </td>
                       <td className="px-5 py-3 text-right text-gray-700">{f.nr_produse}</td>
                       <td className="px-5 py-3 text-right font-bold text-gray-900">
-                        {f.total.toFixed(2)} <span className="text-gray-500 font-normal text-xs">RON</span>
+                        {(f.total * 1.21).toFixed(2)} <span className="text-gray-500 font-normal text-xs">RON cu TVA</span>
                       </td>
                       <td className="px-5 py-3 text-right flex items-center justify-end gap-2">
                         {f.status === 'nefinalizata' && (
