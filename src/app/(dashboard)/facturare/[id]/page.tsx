@@ -172,7 +172,7 @@ export default function FacturaDetaliuPage() {
             name: p.nume_produs,
             code: '',
             description: '',
-            price: p.pret_vanzare,
+            price: parseFloat((p.pret_vanzare * 1.21).toFixed(4)), // Oblio asteapta pretul CU TVA inclus
             quantity: p.cantitate,
             unit: p.unitate || 'buc',
             vatName: 'Normala',
