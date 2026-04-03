@@ -115,6 +115,9 @@ export default function GestiunePage() {
   // NIR list
   const [nirList, setNirList] = useState<NirRow[]>([])
   const [loadingNir, setLoadingNir] = useState(false)
+  const [nirFiltruDe, setNirFiltruDe] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10) })
+  const [nirFiltruPana, setNirFiltruPana] = useState(() => new Date().toISOString().slice(0, 10))
+  const [nirShortcutActiv, setNirShortcutActiv] = useState<string>('30 zile')
 
   // Modal Intrare Marfă
   const [modalIntrare, setModalIntrare] = useState(false)
@@ -161,7 +164,7 @@ export default function GestiunePage() {
         .then(({ data }) => { if (data?.role === 'admin') setIsAdmin(true) })
     })
   }, [])
-  useEffect(() => { if (tab === 'nir') incarcaNir() }, [tab])
+  useEffect(() => { if (tab === 'nir') incarcaNir() }, [tab, nirFiltruDe, nirFiltruPana])
 
   async function incarcaStoc() {
     setLoadingStoc(true)
@@ -201,9 +204,12 @@ export default function GestiunePage() {
     setLoadingStoc(false)
   }
 
-  async function incarcaNir() {
+  async function incarcaNir(deLa = nirFiltruDe, panaLa = nirFiltruPana) {
     setLoadingNir(true)
-    const { data } = await createClient().from('nir').select('*').order('created_at', { ascending: false }).limit(100)
+    const { data } = await createClient().from('nir').select('*')
+      .gte('data_intrare', deLa)
+      .lte('data_intrare', panaLa)
+      .order('data_intrare', { ascending: false })
     setNirList((data as NirRow[]) ?? [])
     setLoadingNir(false)
   }
@@ -759,6 +765,41 @@ export default function GestiunePage() {
 
       {/* ── TAB NIR ── */}
       {tab === 'nir' && (
+        <>
+        {/* Filtre perioadă NIR */}
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-gray-700">Perioadă:</span>
+          <input
+            type="date"
+            value={nirFiltruDe}
+            onChange={e => { setNirFiltruDe(e.target.value); setNirShortcutActiv('') }}
+            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <span className="text-sm text-gray-500">—</span>
+          <input
+            type="date"
+            value={nirFiltruPana}
+            onChange={e => { setNirFiltruPana(e.target.value); setNirShortcutActiv('') }}
+            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { label: 'Azi', fn: () => { const t = new Date().toISOString().slice(0, 10); setNirFiltruDe(t); setNirFiltruPana(t); setNirShortcutActiv('Azi') } },
+              { label: '30 zile', fn: () => { const d = new Date(); const t = d.toISOString().slice(0, 10); d.setDate(d.getDate() - 29); setNirFiltruDe(d.toISOString().slice(0, 10)); setNirFiltruPana(t); setNirShortcutActiv('30 zile') } },
+              { label: 'Luna aceasta', fn: () => { const d = new Date(); const y = d.getFullYear(), m = d.getMonth(); setNirFiltruDe(`${y}-${String(m + 1).padStart(2, '0')}-01`); setNirFiltruPana(new Date(y, m + 1, 0).toISOString().slice(0, 10)); setNirShortcutActiv('Luna aceasta') } },
+              { label: 'Luna trecută', fn: () => { const d = new Date(); const y = d.getFullYear(), m = d.getMonth(); const pm = m === 0 ? 11 : m - 1; const py = m === 0 ? y - 1 : y; setNirFiltruDe(`${py}-${String(pm + 1).padStart(2, '0')}-01`); setNirFiltruPana(new Date(py, pm + 1, 0).toISOString().slice(0, 10)); setNirShortcutActiv('Luna trecută') } },
+            ].map(({ label, fn }) => (
+              <button
+                key={label}
+                onClick={fn}
+                className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${nirShortcutActiv === label ? 'bg-blue-600 text-white border-blue-600 font-semibold' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:text-blue-600'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="bg-white rounded-xl border border-gray-200">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -812,6 +853,7 @@ export default function GestiunePage() {
             </table>
           </div>
         </div>
+        </>
       )}
 
       {/* ════════════════════════════════════════════════

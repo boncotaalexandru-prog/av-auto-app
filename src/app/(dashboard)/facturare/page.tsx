@@ -110,6 +110,11 @@ function FacturarePageInner() {
   // ─── Lista facturi ────────────────────────────────────────────────────────
   const [facturi, setFacturi] = useState<FacturaItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [filtruDe, setFiltruDe] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10) })
+  const [filtruPana, setFiltruPana] = useState(() => new Date().toISOString().slice(0, 10))
+  const [filtruStatus, setFiltruStatus] = useState('')
+  const [filtruClient, setFiltruClient] = useState('')
+  const [shortcutActiv, setShortcutActiv] = useState<string>('30 zile')
 
   // ─── Storno state ─────────────────────────────────────────────────────────
   const [stornoClientSearch, setStornoClientSearch] = useState('')
@@ -124,18 +129,20 @@ function FacturarePageInner() {
   const [stornoSalvand, setStornoSalvand] = useState(false)
 
   useEffect(() => {
-    if (view === 'lista') loadFacturi()
-  }, [view])
+    if (view === 'lista') loadFacturi(filtruDe, filtruPana)
+  }, [view, filtruDe, filtruPana])
 
-  async function loadFacturi() {
+  async function loadFacturi(deLa?: string, panaLa?: string) {
     setLoading(true)
     const supabase = createClient()
 
-    const { data: fRows } = await supabase
+    let q = supabase
       .from('facturi')
       .select('id, numar, data_emitere, status, client_id, nota_interna, oblio_link, oblio_serie, oblio_numar, clienti(denumire)')
       .order('numar', { ascending: false })
-      .limit(200)
+    if (deLa) q = q.gte('data_emitere', deLa)
+    if (panaLa) q = q.lte('data_emitere', panaLa)
+    const { data: fRows } = await q
 
     if (!fRows) { setLoading(false); return }
 
@@ -1001,16 +1008,9 @@ function FacturarePageInner() {
   const adaos = totalAch > 0 ? ((total - totalAch) / totalAch) * 100 : null
 
   // ─── Filtre lista ─────────────────────────────────────────────────────────
-  const [filtruStatus, setFiltruStatus] = useState('')
-  const [filtruClient, setFiltruClient] = useState('')
-  const [filtruDe, setFiltruDe] = useState('')
-  const [filtruPana, setFiltruPana] = useState('')
-
   const facturiFiltrate = facturi.filter(f => {
     if (filtruStatus && f.status !== filtruStatus) return false
     if (filtruClient && !f.client_denumire.toLowerCase().includes(filtruClient.toLowerCase())) return false
-    if (filtruDe && f.data_emitere < filtruDe) return false
-    if (filtruPana && f.data_emitere > filtruPana) return false
     return true
   })
 
@@ -1058,18 +1058,35 @@ function FacturarePageInner() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">De la</label>
-            <input type="date" value={filtruDe} onChange={e => setFiltruDe(e.target.value)}
+            <input type="date" value={filtruDe} onChange={e => { setFiltruDe(e.target.value); setShortcutActiv('') }}
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Până la</label>
-            <input type="date" value={filtruPana} onChange={e => setFiltruPana(e.target.value)}
+            <input type="date" value={filtruPana} onChange={e => { setFiltruPana(e.target.value); setShortcutActiv('') }}
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          {(filtruStatus || filtruClient || filtruDe || filtruPana) && (
-            <button onClick={() => { setFiltruStatus(''); setFiltruClient(''); setFiltruDe(''); setFiltruPana('') }}
-              className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1.5 border border-gray-200 rounded-lg">
-              ✕ Resetează
+          <div className="flex flex-wrap gap-1.5 self-end">
+            {[
+              { label: 'Azi', fn: () => { const t = new Date().toISOString().slice(0,10); setFiltruDe(t); setFiltruPana(t) } },
+              { label: '30 zile', fn: () => { const t = new Date(); const s = new Date(t); s.setDate(s.getDate()-29); setFiltruDe(s.toISOString().slice(0,10)); setFiltruPana(t.toISOString().slice(0,10)) } },
+              { label: 'Luna aceasta', fn: () => { const t = new Date(); const s = new Date(t.getFullYear(), t.getMonth(), 1); setFiltruDe(s.toISOString().slice(0,10)); setFiltruPana(t.toISOString().slice(0,10)) } },
+              { label: 'Luna trecută', fn: () => { const t = new Date(); const s = new Date(t.getFullYear(), t.getMonth()-1, 1); const e = new Date(t.getFullYear(), t.getMonth(), 0); setFiltruDe(s.toISOString().slice(0,10)); setFiltruPana(e.toISOString().slice(0,10)) } },
+            ].map(({ label, fn }) => (
+              <button key={label} onClick={() => { fn(); setShortcutActiv(label) }}
+                className={`px-2.5 py-1.5 text-xs border rounded-lg whitespace-nowrap transition-colors ${
+                  shortcutActiv === label
+                    ? 'bg-blue-600 text-white border-blue-600 font-semibold'
+                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {(filtruStatus || filtruClient) && (
+            <button onClick={() => { setFiltruStatus(''); setFiltruClient('') }}
+              className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1.5 border border-gray-200 rounded-lg self-end">
+              ✕ Resetează filtre
             </button>
           )}
           <span className="ml-auto text-xs text-gray-500 self-end">{facturiFiltrate.length} facturi</span>
