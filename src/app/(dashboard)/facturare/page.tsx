@@ -97,6 +97,7 @@ function FacturarePageInner() {
   // ─── Setari Oblio ─────────────────────────────────────────────────────────
   const [oblioSettings, setOblioSettings] = useState<OblioSettings | null>(null)
   const [emitandId, setEmitandId] = useState<string | null>(null)
+  const [toastDataSchimbata, setToastDataSchimbata] = useState<{ veche: string; noua: string } | null>(null)
 
   useEffect(() => {
     createClient()
@@ -692,6 +693,16 @@ function FacturarePageInner() {
           .select('id, numar, data_emitere, data_scadenta, observatii, nota_interna, client_id')
           .eq('id', id).single()
 
+        // Verifică și actualizează data emiterii dacă e diferită de azi
+        const azi = new Date().toISOString().slice(0, 10)
+        let dataEmitereFinala = factura?.data_emitere ?? azi
+        if (factura && factura.data_emitere !== azi) {
+          await supabase.from('facturi').update({ data_emitere: azi }).eq('id', id)
+          setToastDataSchimbata({ veche: factura.data_emitere, noua: azi })
+          setTimeout(() => setToastDataSchimbata(null), 6000)
+          dataEmitereFinala = azi
+        }
+
         // Încarcă datele clientului
         const { data: client } = await supabase
           .from('clienti')
@@ -714,7 +725,7 @@ function FacturarePageInner() {
 
         const oblioPayload = {
           cif: oblioSettings.cui.replace(/^RO/i, '').trim(),
-          issueDate: factura?.data_emitere ?? new Date().toISOString().slice(0, 10),
+          issueDate: dataEmitereFinala,
           dueDate: factura?.data_scadenta ?? '',
           seriesName: oblioSettings.serie_factura,
           currency: 'RON',
@@ -1802,6 +1813,20 @@ function FacturarePageInner() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast — data facturii actualizată */}
+      {toastDataSchimbata && (
+        <div className="fixed bottom-6 right-6 z-[70] flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl shadow-lg px-5 py-4 max-w-sm">
+          <span className="text-xl">📅</span>
+          <div>
+            <p className="text-sm font-bold text-amber-900">Data facturii actualizată</p>
+            <p className="text-sm text-amber-800 mt-0.5">
+              Data a fost schimbată din <strong>{toastDataSchimbata.veche}</strong> în <strong>{toastDataSchimbata.noua}</strong> la momentul emiterii.
+            </p>
+          </div>
+          <button onClick={() => setToastDataSchimbata(null)} className="text-amber-600 hover:text-amber-900 text-lg leading-none ml-1">✕</button>
         </div>
       )}
 
