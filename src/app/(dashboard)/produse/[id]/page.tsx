@@ -8,7 +8,6 @@ interface Produs {
   id: string
   cod: string | null
   nume: string
-  pret: number | null
   unitate: string | null
   producator: string | null
 }
@@ -70,30 +69,54 @@ export default function ProdusDetaliuPage() {
 
     // Produs
     const { data: p } = await supabase.from('produse')
-      .select('id, cod, nume, pret, unitate, producator')
+      .select('id, cod, nume, unitate, producator')
       .eq('id', id).single()
     if (!p) { setLoading(false); return }
     setProdus(p)
 
-    const orParts = [`produs_id.eq.${id}`, ...(p.cod ? [`produs_cod.eq.${p.cod}`] : [])]
-    const codParts = [`produs_id.eq.${id}`, ...(p.cod ? [`cod.eq.${p.cod}`] : [])]
+    // Filtre combinare: produs_id + cod (pentru nir_produse/stoc) și cod (pentru oferte/facturi)
+    const orPartsNir = [`produs_id.eq.${id}`, ...(p.cod ? [`produs_cod.eq.${p.cod}`] : [])]
+    const orPartsCod = [`produs_id.eq.${id}`, ...(p.cod ? [`cod.eq.${p.cod}`] : [])]
 
-    // Stoc curent (batches cu cantitate > 0)
-    const { data: stocRows } = await supabase.from('stoc')
-      .select('id, cantitate, pret_achizitie, pret_lista, furnizor_nume, updated_at')
-      .or(orParts.join(','))
-      .gt('cantitate', 0)
-      .order('updated_at', { ascending: false })
-    setStocBatches(stocRows ?? [])
+    // Toate query-urile în paralel — produs_id/cod + fallback pe nume
+    const NIR_SEL  = 'id, created_at, cantitate, pret_achizitie, nir(id, numar, data_intrare, furnizor_nume)'
+    const OF_SEL   = 'id, created_at, cantitate, pret_vanzare, oferte(id, numar, clienti(denumire))'
+    const FP_SEL   = 'id, created_at, cantitate, pret_vanzare, pret_achizitie, facturi(id, numar, data_emitere, tip, clienti(denumire))'
+
+    const [stocRes, nirA, nirB, ofA, ofB, fpA, fpB] = await Promise.all([
+      // Stoc curent
+      supabase.from('stoc').select('id, cantitate, pret_achizitie, pret_lista, furnizor_nume, updated_at')
+        .or(orPartsNir.join(',')).gt('cantitate', 0).order('updated_at', { ascending: false }),
+      // NIR — prin produs_id / cod
+      supabase.from('nir_produse').select(NIR_SEL).or(orPartsNir.join(',')),
+      // NIR — fallback prin nume produs
+      supabase.from('nir_produse').select(NIR_SEL).eq('produs_nume', p.nume),
+      // Oferte — prin produs_id / cod
+      supabase.from('oferte_produse').select(OF_SEL).or(orPartsCod.join(',')),
+      // Oferte — fallback prin nume produs
+      supabase.from('oferte_produse').select(OF_SEL).eq('nume_produs', p.nume),
+      // Facturi — prin produs_id / cod
+      supabase.from('facturi_produse').select(FP_SEL).or(orPartsCod.join(',')),
+      // Facturi — fallback prin nume produs
+      supabase.from('facturi_produse').select(FP_SEL).eq('nume_produs', p.nume),
+    ])
+
+    setStocBatches((stocRes.data ?? []) as StocBatch[])
+
+    // Merge + deduplicare pe id pentru fiecare tabel
+    function mergeUnique<T extends { id: string }>(a: T[] | null, b: T[] | null): T[] {
+      const seen = new Set<string>()
+      return [...(a ?? []), ...(b ?? [])].filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true })
+    }
+
+    const nirRows = mergeUnique(nirA.data, nirB.data)
+    const ofRows  = mergeUnique(ofA.data, ofB.data)
+    const fpRows  = mergeUnique(fpA.data, fpB.data)
 
     const events: FeedEvent[] = []
 
-    // NIR intrări — folosim nir_produse.created_at pentru timestamp precis
-    const { data: nirRows } = await supabase.from('nir_produse')
-      .select('id, created_at, cantitate, pret_achizitie, nir(id, numar, data_intrare, furnizor_nume)')
-      .or(orParts.join(','))
-
-    for (const np of nirRows ?? []) {
+    // NIR intrări
+    for (const np of nirRows) {
       const nir = Array.isArray(np.nir) ? np.nir[0] : (np.nir as { id: string; numar: number; data_intrare: string; furnizor_nume: string | null } | null)
       events.push({
         _key: `nir-${np.id}`,
@@ -107,12 +130,8 @@ export default function ProdusDetaliuPage() {
       })
     }
 
-    // Oferte — oferte_produse.created_at
-    const { data: ofRows } = await supabase.from('oferte_produse')
-      .select('id, created_at, cantitate, pret_vanzare, oferte(id, numar, clienti(denumire))')
-      .or(codParts.join(','))
-
-    for (const op of ofRows ?? []) {
+    // Oferte
+    for (const op of ofRows) {
       const of = Array.isArray(op.oferte) ? op.oferte[0] : (op.oferte as { id: string; numar: number; clienti: { denumire: string } | { denumire: string }[] | null } | null)
       const client = of?.clienti ? (Array.isArray(of.clienti) ? of.clienti[0] : of.clienti) : null
       events.push({
@@ -127,12 +146,8 @@ export default function ProdusDetaliuPage() {
       })
     }
 
-    // Facturi (normale + storno) — facturi_produse.created_at
-    const { data: fpRows } = await supabase.from('facturi_produse')
-      .select('id, created_at, cantitate, pret_vanzare, pret_achizitie, facturi(id, numar, data_emitere, tip, clienti(denumire))')
-      .or(codParts.join(','))
-
-    for (const fp of fpRows ?? []) {
+    // Facturi (normale + storno)
+    for (const fp of fpRows) {
       const f = Array.isArray(fp.facturi) ? fp.facturi[0] : (fp.facturi as { id: string; numar: number; data_emitere: string; tip: string; clienti: { denumire: string } | { denumire: string }[] | null } | null)
       const client = f?.clienti ? (Array.isArray(f.clienti) ? f.clienti[0] : f.clienti) : null
       const isStorno = f?.tip === 'storno'
