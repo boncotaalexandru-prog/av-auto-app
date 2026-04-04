@@ -206,10 +206,6 @@ export default function ProdusDetaliuPage() {
           <p className="font-semibold text-gray-900">{produs.unitate || '—'}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 mb-0.5">Preț listă</p>
-          <p className="font-bold text-gray-900">{produs.pret != null ? `${produs.pret} RON` : '—'}</p>
-        </div>
-        <div>
           <p className="text-xs text-gray-500 mb-0.5">Stoc disponibil</p>
           <p className={`font-bold text-xl ${stocTotal > 0 ? 'text-green-700' : 'text-red-600'}`}>
             {stocTotal} <span className="text-sm font-normal text-gray-500">{produs.unitate || 'buc'}</span>
