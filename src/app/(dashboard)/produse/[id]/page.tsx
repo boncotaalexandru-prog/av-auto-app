@@ -89,16 +89,16 @@ export default function ProdusDetaliuPage() {
         .or(orPartsNir.join(',')).gt('cantitate', 0).order('updated_at', { ascending: false }),
       // NIR — prin produs_id / cod
       supabase.from('nir_produse').select(NIR_SEL).or(orPartsNir.join(',')),
-      // NIR — fallback prin nume produs
-      supabase.from('nir_produse').select(NIR_SEL).eq('produs_nume', p.nume),
+      // NIR — fallback prin nume produs (case-insensitive)
+      supabase.from('nir_produse').select(NIR_SEL).ilike('produs_nume', p.nume),
       // Oferte — prin produs_id / cod
       supabase.from('oferte_produse').select(OF_SEL).or(orPartsCod.join(',')),
-      // Oferte — fallback prin nume produs
-      supabase.from('oferte_produse').select(OF_SEL).eq('nume_produs', p.nume),
+      // Oferte — fallback prin nume produs (case-insensitive)
+      supabase.from('oferte_produse').select(OF_SEL).ilike('nume_produs', p.nume),
       // Facturi — prin produs_id / cod
       supabase.from('facturi_produse').select(FP_SEL).or(orPartsCod.join(',')),
-      // Facturi — fallback prin nume produs
-      supabase.from('facturi_produse').select(FP_SEL).eq('nume_produs', p.nume),
+      // Facturi — fallback prin nume produs (case-insensitive)
+      supabase.from('facturi_produse').select(FP_SEL).ilike('nume_produs', p.nume),
     ])
 
     setStocBatches((stocRes.data ?? []) as StocBatch[])
@@ -303,8 +303,14 @@ export default function ProdusDetaliuPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap text-sm">
-                      <span className={`font-semibold ${ev.tip === 'storno' ? 'text-purple-700' : 'text-gray-900'}`}>
-                        {ev.tip === 'storno' ? '-' : '+'}{ev.cantitate} {produs.unitate || 'buc'}
+                      <span className={`font-semibold ${
+                        ev.tip === 'nir' ? 'text-emerald-700' :
+                        ev.tip === 'factura' ? 'text-red-600' :
+                        ev.tip === 'storno' ? 'text-purple-700' :
+                        'text-gray-900'
+                      }`}>
+                        {ev.tip === 'nir' ? '+' : ev.tip === 'factura' ? '-' : ev.tip === 'storno' ? '+' : ''}
+                        {ev.cantitate} {produs.unitate || 'buc'}
                       </span>
 
                       {ev.tip === 'nir' && ev.pret_achizitie != null && (
