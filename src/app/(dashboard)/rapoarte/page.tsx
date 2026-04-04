@@ -875,6 +875,15 @@ export default function RapoartePage() {
                         <tr><td colSpan={3} className="px-5 py-8 text-center text-gray-400 text-sm">Niciun NIR înregistrat.</td></tr>
                       )}
                     </tbody>
+                    {byFurnizor.length > 0 && (
+                      <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                        <tr>
+                          <td className="px-5 py-3 font-bold text-gray-800">TOTAL</td>
+                          <td className="px-5 py-3 text-right font-bold text-gray-700">{byFurnizor.reduce((s, r) => s + r.nrNir, 0)}</td>
+                          <td className="px-5 py-3 text-right font-bold text-gray-900">{fmt(byFurnizor.reduce((s, r) => s + r.valoare, 0))} RON</td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
 
