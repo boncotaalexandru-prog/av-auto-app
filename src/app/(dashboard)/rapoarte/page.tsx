@@ -288,7 +288,11 @@ export default function RapoartePage() {
       map[p.produs].profit += p.profit
     })
     return Object.entries(map)
-      .map(([produs, v]) => ({ produs, ...v, marja: v.valoare > 0 ? (v.profit / v.valoare) * 100 : 0 }))
+      .map(([produs, v]) => ({
+        produs, ...v,
+        marja: v.valoare > 0 ? (v.profit / v.valoare) * 100 : 0,
+        adaos: v.cost > 0 ? (v.profit / v.cost) * 100 : 0,
+      }))
       .sort((a, b) => b.valoare - a.valoare)
       .slice(0, 30)
   }, [facturiProduseFiltered])
@@ -304,7 +308,11 @@ export default function RapoartePage() {
       map[c].nrLinii++
     })
     return Object.entries(map)
-      .map(([client, v]) => ({ client, ...v, marja: v.valoare > 0 ? (v.profit / v.valoare) * 100 : 0 }))
+      .map(([client, v]) => ({
+        client, ...v,
+        marja: v.valoare > 0 ? (v.profit / v.valoare) * 100 : 0,
+        adaos: v.cost > 0 ? (v.profit / v.cost) * 100 : 0,
+      }))
       .sort((a, b) => b.valoare - a.valoare)
   }, [facturiProduseFiltered])
 
@@ -568,7 +576,7 @@ export default function RapoartePage() {
               {/* Marjă pe clienți */}
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-900">Marjă adaos pe clienți</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Marjă pe clienți</h3>
                   <span className="text-xs text-gray-400">din facturi emise</span>
                 </div>
                 {topClientiValoare.length === 0 ? (
@@ -582,7 +590,8 @@ export default function RapoartePage() {
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Valoare vânz.</th>
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Cost ach.</th>
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Profit</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Marjă %</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Marjă profit</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Adaos</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -598,6 +607,11 @@ export default function RapoartePage() {
                               {row.marja.toFixed(1)}%
                             </span>
                           </td>
+                          <td className="px-5 py-3 text-right">
+                            <span className={`font-bold text-sm px-2 py-0.5 rounded ${row.adaos >= 30 ? 'bg-blue-100 text-blue-700' : row.adaos >= 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
+                              {row.adaos.toFixed(1)}%
+                            </span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -609,6 +623,9 @@ export default function RapoartePage() {
                         <td className="px-5 py-3 text-right font-bold" style={{ color: kpi.profitFact >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(kpi.profitFact)} RON</td>
                         <td className="px-5 py-3 text-right font-bold text-gray-900">
                           {kpi.valFact > 0 ? ((kpi.profitFact / kpi.valFact) * 100).toFixed(1) : '0.0'}%
+                        </td>
+                        <td className="px-5 py-3 text-right font-bold text-gray-900">
+                          {(() => { const c = topClientiValoare.reduce((s, r) => s + r.cost, 0); return c > 0 ? ((kpi.profitFact / c) * 100).toFixed(1) : '0.0' })()}%
                         </td>
                       </tr>
                     </tfoot>
@@ -634,7 +651,8 @@ export default function RapoartePage() {
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Valoare vânz.</th>
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Cost ach.</th>
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Profit</th>
-                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Marjă %</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Marjă profit</th>
+                        <th className="text-right px-5 py-3 text-gray-600 font-semibold">Adaos</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -649,6 +667,11 @@ export default function RapoartePage() {
                           <td className="px-5 py-3 text-right">
                             <span className={`font-bold text-sm px-2 py-0.5 rounded ${row.marja >= 20 ? 'bg-green-100 text-green-700' : row.marja >= 10 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
                               {row.marja.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <span className={`font-bold text-sm px-2 py-0.5 rounded ${row.adaos >= 30 ? 'bg-blue-100 text-blue-700' : row.adaos >= 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
+                              {row.adaos.toFixed(1)}%
                             </span>
                           </td>
                         </tr>
@@ -710,12 +733,14 @@ export default function RapoartePage() {
                         <th className="text-right px-5 py-3 text-gray-700 font-semibold">Vânzări nete</th>
                         <th className="text-right px-5 py-3 text-gray-700 font-semibold">Cost achiziție</th>
                         <th className="text-right px-5 py-3 text-gray-700 font-semibold">Profit</th>
-                        <th className="text-right px-5 py-3 text-gray-700 font-semibold">Marjă</th>
+                        <th className="text-right px-5 py-3 text-gray-700 font-semibold">Marjă profit</th>
+                        <th className="text-right px-5 py-3 text-gray-700 font-semibold">Adaos</th>
                       </tr>
                     </thead>
                     <tbody>
                       {profitPerProdus.map((row, i) => {
                         const marja = row.vanzari_nete > 0 ? (row.profit / row.vanzari_nete) * 100 : 0
+                        const adaos = row.cost_achizitie > 0 ? (row.profit / row.cost_achizitie) * 100 : 0
                         return (
                           <tr key={row.produs} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
                             <td className="px-5 py-3 text-gray-400 font-mono text-xs">{i + 1}</td>
@@ -729,6 +754,11 @@ export default function RapoartePage() {
                             <td className="px-5 py-3 text-right">
                               <span className={`font-bold text-sm ${marja >= 20 ? 'text-green-600' : marja >= 10 ? 'text-yellow-600' : 'text-red-500'}`}>
                                 {marja.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-right">
+                              <span className={`font-bold text-sm ${adaos >= 30 ? 'text-blue-600' : adaos >= 15 ? 'text-yellow-600' : 'text-red-500'}`}>
+                                {adaos.toFixed(1)}%
                               </span>
                             </td>
                           </tr>
@@ -745,6 +775,9 @@ export default function RapoartePage() {
                         </td>
                         <td className="px-5 py-3 text-right font-bold text-gray-900">
                           {profitTotal.vanzari_nete > 0 ? ((profitTotal.profit / profitTotal.vanzari_nete) * 100).toFixed(1) : '0.0'}%
+                        </td>
+                        <td className="px-5 py-3 text-right font-bold text-gray-900">
+                          {profitTotal.cost_achizitie > 0 ? ((profitTotal.profit / profitTotal.cost_achizitie) * 100).toFixed(1) : '0.0'}%
                         </td>
                       </tr>
                     </tfoot>
