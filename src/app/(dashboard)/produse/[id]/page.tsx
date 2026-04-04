@@ -78,15 +78,28 @@ export default function ProdusDetaliuPage() {
     const orPartsNir = [`produs_id.eq.${id}`, ...(p.cod ? [`produs_cod.eq.${p.cod}`] : [])]
     const orPartsCod = [`produs_id.eq.${id}`, ...(p.cod ? [`cod.eq.${p.cod}`] : [])]
 
-    // Toate query-urile în paralel — produs_id/cod + fallback pe nume
     const NIR_SEL  = 'id, created_at, cantitate, pret_achizitie, nir(id, numar, data_intrare, furnizor_nume)'
     const OF_SEL   = 'id, created_at, cantitate, pret_vanzare, oferte(id, numar, clienti(denumire))'
     const FP_SEL   = 'id, created_at, cantitate, pret_vanzare, pret_achizitie, facturi(id, numar, data_emitere, tip, clienti(denumire))'
 
-    const [stocRes, nirA, nirB, ofA, ofB, fpA, fpB] = await Promise.all([
-      // Stoc curent
+    // ── Pasul 1: stoc curent (cantitate > 0) + TOATE ID-urile din stoc (inclusiv vândute) ──
+    const [stocRes, stocAllRes] = await Promise.all([
       supabase.from('stoc').select('id, cantitate, pret_achizitie, pret_lista, furnizor_nume, updated_at')
         .or(orPartsNir.join(',')).gt('cantitate', 0).order('updated_at', { ascending: false }),
+      supabase.from('stoc').select('id').or(orPartsNir.join(',')),
+    ])
+
+    setStocBatches((stocRes.data ?? []) as StocBatch[])
+
+    // Stoc IDs — folosite pentru a găsi facturile după stoc_id (fiabil chiar dacă produs_id/cod lipsesc)
+    const allStocIds = (stocAllRes.data ?? []).map((s: { id: string }) => s.id)
+    const orPartsFacturi = [
+      ...orPartsCod,
+      ...(allStocIds.length ? [`stoc_id.in.(${allStocIds.join(',')})`] : []),
+    ]
+
+    // ── Pasul 2: toate query-urile în paralel ──────────────────────────────────
+    const [nirA, nirB, ofA, ofB, fpA, fpB] = await Promise.all([
       // NIR — prin produs_id / cod
       supabase.from('nir_produse').select(NIR_SEL).or(orPartsNir.join(',')),
       // NIR — fallback prin nume produs (case-insensitive)
@@ -95,13 +108,11 @@ export default function ProdusDetaliuPage() {
       supabase.from('oferte_produse').select(OF_SEL).or(orPartsCod.join(',')),
       // Oferte — fallback prin nume produs (case-insensitive)
       supabase.from('oferte_produse').select(OF_SEL).ilike('nume_produs', p.nume),
-      // Facturi — prin produs_id / cod
-      supabase.from('facturi_produse').select(FP_SEL).or(orPartsCod.join(',')),
+      // Facturi — prin produs_id / cod / stoc_id (tripl matching)
+      supabase.from('facturi_produse').select(FP_SEL).or(orPartsFacturi.join(',')),
       // Facturi — fallback prin nume produs (case-insensitive)
       supabase.from('facturi_produse').select(FP_SEL).ilike('nume_produs', p.nume),
     ])
-
-    setStocBatches((stocRes.data ?? []) as StocBatch[])
 
     // Merge + deduplicare pe id pentru fiecare tabel
     function mergeUnique<T extends { id: string }>(a: T[] | null, b: T[] | null): T[] {
@@ -303,15 +314,17 @@ export default function ProdusDetaliuPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap text-sm">
-                      <span className={`font-semibold ${
-                        ev.tip === 'nir' ? 'text-emerald-700' :
-                        ev.tip === 'factura' ? 'text-red-600' :
-                        ev.tip === 'storno' ? 'text-purple-700' :
-                        'text-gray-900'
-                      }`}>
-                        {ev.tip === 'nir' ? '+' : ev.tip === 'factura' ? '-' : ev.tip === 'storno' ? '+' : ''}
-                        {ev.cantitate} {produs.unitate || 'buc'}
-                      </span>
+                      {ev.tip !== 'oferta' && (
+                        <span className={`font-semibold ${
+                          ev.tip === 'nir' ? 'text-emerald-700' :
+                          ev.tip === 'factura' ? 'text-red-600' :
+                          ev.tip === 'storno' ? 'text-purple-700' :
+                          'text-gray-900'
+                        }`}>
+                          {ev.tip === 'nir' ? '+' : ev.tip === 'factura' ? '-' : ev.tip === 'storno' ? '+' : ''}
+                          {ev.cantitate} {produs.unitate || 'buc'}
+                        </span>
+                      )}
 
                       {ev.tip === 'nir' && ev.pret_achizitie != null && (
                         <span className="text-gray-600">
