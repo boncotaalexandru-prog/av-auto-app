@@ -155,6 +155,7 @@ export default function OfertaPage() {
   const [adaosInput, setAdaosInput] = useState('')
   const [modalEchivalente, setModalEchivalente] = useState<Array<{ id: string; cod: string | null; nume: string; producator: string | null; unitate: string | null; stoc: number }>>([])
   const [loadingEchivalente, setLoadingEchivalente] = useState(false)
+  const [pretSalvat, setPretSalvat] = useState<Record<string, boolean>>({})
   const prodRef = useRef<HTMLDivElement>(null)
   const furnRef = useRef<HTMLDivElement>(null)
 
@@ -366,6 +367,32 @@ export default function OfertaPage() {
     setStocOptiuneIdx(0)
     setEditRandId(null)
     setAdaosInput('')
+  }
+
+  async function salvaPretSpecial(p: OfertaProdus) {
+    if (!oferta?.client_id || !p.pret_vanzare) return
+    const supabase = createClient()
+    // Sterge intrarea existenta (daca exista)
+    if (p.produs_id) {
+      await supabase.from('clienti_preturi').delete()
+        .eq('client_id', oferta.client_id).eq('produs_id', p.produs_id)
+    } else if (p.cod) {
+      await supabase.from('clienti_preturi').delete()
+        .eq('client_id', oferta.client_id).eq('produs_cod', p.cod)
+    }
+    // Insereaza pretul nou
+    await supabase.from('clienti_preturi').insert({
+      client_id: oferta.client_id,
+      produs_id: p.produs_id || null,
+      produs_cod: p.cod || null,
+      produs_nume: p.nume_produs,
+      pret_vanzare: p.pret_vanzare,
+      pret_catalog: null,
+      updated_at: new Date().toISOString(),
+    })
+    // Feedback vizual 3 secunde
+    setPretSalvat(prev => ({ ...prev, [p.id]: true }))
+    setTimeout(() => setPretSalvat(prev => ({ ...prev, [p.id]: false })), 3000)
   }
 
   function deschideEditRand(p: OfertaProdus) {
@@ -828,7 +855,23 @@ export default function OfertaPage() {
                     ) : '—'}
                   </td>
                   <td className="px-4 py-2.5 text-right text-gray-900">{p.pret_achizitie?.toFixed(2)}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-900 font-semibold">{p.pret_vanzare?.toFixed(2)}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-900 font-semibold">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span>{p.pret_vanzare?.toFixed(2)}</span>
+                      <button
+                        type="button"
+                        onClick={() => salvaPretSpecial(p)}
+                        title="Salvează ca preț special pentru acest client"
+                        className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium transition-all ${
+                          pretSalvat[p.id]
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-400 hover:bg-yellow-100 hover:text-yellow-700'
+                        }`}
+                      >
+                        {pretSalvat[p.id] ? '✓ Salvat' : '⭐'}
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-4 py-2.5 text-right text-xs font-semibold">
                     {p.pret_achizitie > 0 && p.pret_vanzare > 0 ? (() => {
                       const a = ((p.pret_vanzare - p.pret_achizitie) / p.pret_achizitie) * 100
