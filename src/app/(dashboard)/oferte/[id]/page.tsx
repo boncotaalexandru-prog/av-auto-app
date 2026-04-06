@@ -153,6 +153,8 @@ export default function OfertaPage() {
   const [pretSpecialClient, setPretSpecialClient] = useState<number | null>(null)
   const [editRandId, setEditRandId] = useState<string | null>(null)
   const [adaosInput, setAdaosInput] = useState('')
+  const [modalEchivalente, setModalEchivalente] = useState<Array<{ id: string; cod: string | null; nume: string; producator: string | null; unitate: string | null; stoc: number }>>([])
+  const [loadingEchivalente, setLoadingEchivalente] = useState(false)
   const prodRef = useRef<HTMLDivElement>(null)
   const furnRef = useRef<HTMLDivElement>(null)
 
@@ -291,6 +293,32 @@ export default function OfertaPage() {
     setProdSearch(p.nume)
     setShowProdList(false)
     setEditProducatorModal(false)
+
+    // Încarcă echivalentele produsului selectat
+    setModalEchivalente([])
+    setLoadingEchivalente(true)
+    const { data: prodData } = await supabase.from('produse')
+      .select('grup_echivalente_id').eq('id', p.id).single()
+    if (prodData?.grup_echivalente_id) {
+      const { data: echivData } = await supabase.from('produse')
+        .select('id, cod, nume, producator, unitate')
+        .eq('grup_echivalente_id', prodData.grup_echivalente_id)
+        .neq('id', p.id)
+      if (echivData?.length) {
+        const ids = echivData.map(e => e.id)
+        const cods = echivData.filter(e => e.cod).map(e => e.cod as string)
+        const orP = [`produs_id.in.(${ids.join(',')})`]
+        if (cods.length) orP.push(`produs_cod.in.(${cods.join(',')})`)
+        const { data: stocData } = await supabase.from('stoc')
+          .select('produs_id, produs_cod, cantitate').or(orP.join(','))
+        const sm: Record<string, number> = {}
+        for (const s of stocData ?? []) {
+          const k = s.produs_id ?? s.produs_cod ?? ''; if (k) sm[k] = (sm[k] ?? 0) + s.cantitate
+        }
+        setModalEchivalente(echivData.map(e => ({ ...e, stoc: sm[e.id] ?? (e.cod ? (sm[e.cod] ?? 0) : 0) })))
+      }
+    }
+    setLoadingEchivalente(false)
   }
 
   function aplicaStocOptiune(idx: number) {
@@ -331,6 +359,8 @@ export default function OfertaPage() {
     setProdResults([])
     setFurnizorResults([])
     setFurnizorOre([])
+    setModalEchivalente([])
+    setLoadingEchivalente(false)
     setEditProducatorModal(false)
     setStocOptiuni([])
     setStocOptiuneIdx(0)
@@ -1195,6 +1225,41 @@ export default function OfertaPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Echivalente disponibile în modal */}
+                  {(loadingEchivalente || modalEchivalente.length > 0) && (
+                    <div className="mt-1 pt-2 border-t border-gray-200">
+                      <p className="text-xs font-semibold text-gray-500 mb-1.5">⇄ Produse echivalente</p>
+                      {loadingEchivalente ? (
+                        <p className="text-xs text-gray-400 italic">Se încarcă...</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {modalEchivalente.map(e => (
+                            <div key={e.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-white border border-gray-100">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-900 truncate">{e.nume}</p>
+                                <div className="flex gap-2 text-xs text-gray-500 flex-wrap">
+                                  {e.cod && <span className="font-mono text-blue-700">{e.cod}</span>}
+                                  {e.producator && <span>{e.producator}</span>}
+                                  <span className={e.stoc > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>
+                                    {e.stoc > 0 ? `Stoc: ${e.stoc}` : 'Lipsă stoc'}
+                                  </span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => selectProdus({ id: e.id, cod: e.cod, nume: e.nume, unitate: e.unitate, pret: null, producator: e.producator })}
+                                className="shrink-0 px-2.5 py-1 text-xs font-semibold text-white rounded-lg transition-colors"
+                                style={{ backgroundColor: '#2563eb' }}
+                              >
+                                Folosește
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
