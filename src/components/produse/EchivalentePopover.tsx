@@ -292,8 +292,11 @@ export default function EchivalentePopover({
                         className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between border-b last:border-b-0 border-gray-100 disabled:opacity-50"
                       >
                         <div className="min-w-0">
-                          <span className="font-medium text-gray-900 block truncate">{r.nume}</span>
-                          {r.producator && <span className="text-gray-400">{r.producator}</span>}
+                          <span className="font-medium text-gray-900 block truncate">
+                            {r.nume}
+                            {r.cod && <span className="ml-1.5 font-mono text-gray-900 font-normal">{r.cod}</span>}
+                          </span>
+                          {r.producator && <span className="text-gray-900 text-xs">{r.producator}</span>}
                         </div>
                         <span className="text-blue-600 font-medium shrink-0 ml-2">
                           {adaugand === r.id ? '...' : 'Adaugă'}
