@@ -78,11 +78,12 @@ export default function ProdusDetaliuPage() {
     const orPartsNir = [`produs_id.eq.${id}`, ...(p.cod ? [`produs_cod.eq.${p.cod}`] : [])]
     const orPartsCod = [`produs_id.eq.${id}`, ...(p.cod ? [`cod.eq.${p.cod}`] : [])]
 
-    const NIR_SEL  = 'id, created_at, cantitate, pret_achizitie, nir(id, numar, data_intrare, furnizor_nume)'
-    const OF_SEL   = 'id, created_at, cantitate, pret_vanzare, oferte(id, numar, clienti(denumire))'
-    const FP_SEL   = 'id, created_at, cantitate, pret_vanzare, pret_achizitie, facturi(id, numar, data_emitere, tip, clienti(denumire))'
+    const NIR_SEL = 'id, created_at, cantitate, pret_achizitie, nir(id, numar, data_intrare, furnizor_nume)'
+    const OF_SEL  = 'id, created_at, cantitate, pret_vanzare, oferte(id, numar, clienti(denumire))'
+    // Facturi: fără join anidat — mai sigur, exact ca rapoarte
+    const FP_SEL  = 'id, factura_id, created_at, cantitate, pret_vanzare, pret_achizitie'
 
-    // ── Pasul 1: stoc curent (cantitate > 0) + TOATE ID-urile din stoc (inclusiv vândute) ──
+    // ── Pasul 1: stoc curent + TOATE ID-urile stoc (inclusiv loturi vândute) ──
     const [stocRes, stocAllRes] = await Promise.all([
       supabase.from('stoc').select('id, cantitate, pret_achizitie, pret_lista, furnizor_nume, updated_at')
         .or(orPartsNir.join(',')).gt('cantitate', 0).order('updated_at', { ascending: false }),
@@ -91,38 +92,59 @@ export default function ProdusDetaliuPage() {
 
     setStocBatches((stocRes.data ?? []) as StocBatch[])
 
-    // Stoc IDs — folosite pentru a găsi facturile după stoc_id (fiabil chiar dacă produs_id/cod lipsesc)
     const allStocIds = (stocAllRes.data ?? []).map((s: { id: string }) => s.id)
-    const orPartsFacturi = [
-      ...orPartsCod,
-      ...(allStocIds.length ? [`stoc_id.in.(${allStocIds.join(',')})`] : []),
-    ]
 
-    // ── Pasul 2: toate query-urile în paralel ──────────────────────────────────
-    const [nirA, nirB, ofA, ofB, fpA, fpB] = await Promise.all([
-      // NIR — prin produs_id / cod
+    // ── Pasul 2: NIR + Oferte + Facturi (filtrare fără join anidat) ─────────────
+    function mergeUnique<T extends { id: string }>(a: T[] | null, b: T[] | null): T[] {
+      const seen = new Set<string>()
+      return [...(a ?? []), ...(b ?? [])].filter(r => {
+        if (seen.has(r.id)) return false; seen.add(r.id); return true
+      })
+    }
+
+    const [nirA, nirB, ofA, ofB, fpById, fpByCod, fpByStoc, fpByNume] = await Promise.all([
+      // NIR
       supabase.from('nir_produse').select(NIR_SEL).or(orPartsNir.join(',')),
-      // NIR — fallback prin nume produs (case-insensitive)
       supabase.from('nir_produse').select(NIR_SEL).ilike('produs_nume', p.nume),
-      // Oferte — prin produs_id / cod
+      // Oferte
       supabase.from('oferte_produse').select(OF_SEL).or(orPartsCod.join(',')),
-      // Oferte — fallback prin nume produs (case-insensitive)
       supabase.from('oferte_produse').select(OF_SEL).ilike('nume_produs', p.nume),
-      // Facturi — prin produs_id / cod / stoc_id (tripl matching)
-      supabase.from('facturi_produse').select(FP_SEL).or(orPartsFacturi.join(',')),
-      // Facturi — fallback prin nume produs (case-insensitive)
+      // Facturi — 4 strategii separate, fără join anidat (ca rapoarte)
+      supabase.from('facturi_produse').select(FP_SEL).eq('produs_id', id),
+      p.cod
+        ? supabase.from('facturi_produse').select(FP_SEL).eq('cod', p.cod)
+        : Promise.resolve({ data: null, error: null }),
+      allStocIds.length
+        ? supabase.from('facturi_produse').select(FP_SEL).in('stoc_id', allStocIds)
+        : Promise.resolve({ data: null, error: null }),
       supabase.from('facturi_produse').select(FP_SEL).ilike('nume_produs', p.nume),
     ])
 
-    // Merge + deduplicare pe id pentru fiecare tabel
-    function mergeUnique<T extends { id: string }>(a: T[] | null, b: T[] | null): T[] {
-      const seen = new Set<string>()
-      return [...(a ?? []), ...(b ?? [])].filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true })
-    }
-
     const nirRows = mergeUnique(nirA.data, nirB.data)
     const ofRows  = mergeUnique(ofA.data, ofB.data)
-    const fpRows  = mergeUnique(fpA.data, fpB.data)
+    const fpRows  = mergeUnique(
+      mergeUnique(fpById.data, fpByCod.data),
+      mergeUnique(fpByStoc.data, fpByNume.data)
+    )
+
+    // ── Pasul 3: detalii facturi pentru rândurile găsite ────────────────────────
+    type FacturaInfo = { id: string; numar: number; data_emitere: string; tip: string; client: string | null }
+    const facturiMap: Record<string, FacturaInfo> = {}
+
+    if (fpRows.length > 0) {
+      const facturaIds = [...new Set(fpRows.map((r: { factura_id: string }) => r.factura_id).filter(Boolean))]
+      if (facturaIds.length > 0) {
+        const { data: facturiData } = await supabase
+          .from('facturi')
+          .select('id, numar, data_emitere, tip, clienti(denumire)')
+          .in('id', facturaIds)
+        for (const f of facturiData ?? []) {
+          const cl = f.clienti
+          const clientName = Array.isArray(cl) ? (cl[0]?.denumire ?? null) : ((cl as { denumire: string } | null)?.denumire ?? null)
+          facturiMap[f.id] = { id: f.id, numar: f.numar, data_emitere: f.data_emitere, tip: f.tip, client: clientName }
+        }
+      }
+    }
 
     const events: FeedEvent[] = []
 
@@ -157,17 +179,16 @@ export default function ProdusDetaliuPage() {
       })
     }
 
-    // Facturi (normale + storno)
+    // Facturi + storno
     for (const fp of fpRows) {
-      const f = Array.isArray(fp.facturi) ? fp.facturi[0] : (fp.facturi as { id: string; numar: number; data_emitere: string; tip: string; clienti: { denumire: string } | { denumire: string }[] | null } | null)
-      const client = f?.clienti ? (Array.isArray(f.clienti) ? f.clienti[0] : f.clienti) : null
+      const f = facturiMap[(fp as { factura_id: string }).factura_id]
       const isStorno = f?.tip === 'storno'
       events.push({
         _key: `factura-${fp.id}`,
         tip: isStorno ? 'storno' : 'factura',
         timestamp: fp.created_at ?? f?.data_emitere ?? '',
         numar: f?.numar,
-        entitate: (client as { denumire: string } | null)?.denumire,
+        entitate: f?.client ?? undefined,
         cantitate: Math.abs(fp.cantitate),
         pret_vanzare: fp.pret_vanzare,
         pret_achizitie: fp.pret_achizitie,
