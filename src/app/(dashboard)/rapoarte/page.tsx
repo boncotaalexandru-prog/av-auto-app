@@ -46,6 +46,7 @@ interface NirRow {
 type Tab = 'oferte' | 'vanzari' | 'profit' | 'stoc' | 'achizitii'
 
 interface ProfitRand {
+  cod: string
   produs: string
   cantitate: number
   vanzari_nete: number
@@ -55,6 +56,7 @@ interface ProfitRand {
 
 interface FacProdRich {
   factura_id: string
+  cod: string
   produs: string
   cantitate: number
   pret_vanzare: number
@@ -133,7 +135,7 @@ export default function RapoartePage() {
         supabase.from('stoc').select('produs_nume, produs_cod, cantitate, pret_achizitie, pret_lista, furnizor_nume').order('produs_nume'),
         supabase.from('nir').select('id, numar, data_intrare, furnizor_nume, total_fara_tva, total_cu_tva').order('data_intrare', { ascending: false }).limit(200),
         supabase.from('facturi').select('id, data_emitere, client_id, tip').in('status', ['emisa', 'platita', 'stornata']).order('data_emitere', { ascending: false }).limit(1000),
-        supabase.from('facturi_produse').select('factura_id, nume_produs, cantitate, pret_vanzare, pret_achizitie').limit(10000),
+        supabase.from('facturi_produse').select('factura_id, nume_produs, cod, cantitate, pret_vanzare, pret_achizitie').limit(10000),
       ])
 
       // Mapuri pentru join rapid
@@ -173,7 +175,8 @@ export default function RapoartePage() {
       })
 
       // Construim randuri pentru profit pe produs (toate liniile)
-      const fpJoined = (fpRaw.data ?? []).map((p: { factura_id: string; nume_produs: string; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => ({
+      const fpJoined = (fpRaw.data ?? []).map((p: { factura_id: string; nume_produs: string; cod: string | null; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => ({
+        cod: p.cod ?? '',
         produs: p.nume_produs ?? '',
         cantitate: p.cantitate ?? 1,
         vanzari_nete: (p.cantitate ?? 1) * (p.pret_vanzare ?? 0),
@@ -185,12 +188,13 @@ export default function RapoartePage() {
       // Randuri îmbogățite cu client și tip (pentru vânzări)
       // Storno-urile au cantitate negativa — le includem ca sa scada corect din totaluri
       const fpRich: FacProdRich[] = (fpRaw.data ?? [])
-        .map((p: { factura_id: string; nume_produs: string; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => {
+        .map((p: { factura_id: string; nume_produs: string; cod: string | null; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => {
           const f = facturaMap[p.factura_id]
           const cant = p.cantitate ?? 1
           const pv = p.pret_vanzare ?? 0
           const pa = p.pret_achizitie ?? 0
           return {
+            cod: p.cod ?? '',
             produs: p.nume_produs ?? '',
             cantitate: cant,
             pret_vanzare: pv,
@@ -279,17 +283,18 @@ export default function RapoartePage() {
   }, [oferteFiltered])
 
   const topProduse = useMemo(() => {
-    const map: Record<string, { cantitate: number; valoare: number; cost: number; profit: number }> = {}
+    const map: Record<string, { cod: string; produs: string; cantitate: number; valoare: number; cost: number; profit: number }> = {}
     facturiProduseFiltered.forEach(p => {
-      if (!map[p.produs]) map[p.produs] = { cantitate: 0, valoare: 0, cost: 0, profit: 0 }
-      map[p.produs].cantitate += p.cantitate
-      map[p.produs].valoare += p.vanzari_nete
-      map[p.produs].cost += p.cost_achizitie
-      map[p.produs].profit += p.profit
+      const key = p.cod ? p.cod : `__${p.produs}`
+      if (!map[key]) map[key] = { cod: p.cod, produs: p.produs, cantitate: 0, valoare: 0, cost: 0, profit: 0 }
+      map[key].cantitate += p.cantitate
+      map[key].valoare += p.vanzari_nete
+      map[key].cost += p.cost_achizitie
+      map[key].profit += p.profit
     })
-    return Object.entries(map)
-      .map(([produs, v]) => ({
-        produs, ...v,
+    return Object.values(map)
+      .map(v => ({
+        ...v,
         marja: v.valoare > 0 ? (v.profit / v.valoare) * 100 : 0,
         adaos: v.cost > 0 ? (v.profit / v.cost) * 100 : 0,
       }))
@@ -324,11 +329,13 @@ export default function RapoartePage() {
     )
     const map: Record<string, ProfitRand> = {}
     filtered.forEach(p => {
-      if (!map[p.produs]) map[p.produs] = { produs: p.produs, cantitate: 0, vanzari_nete: 0, cost_achizitie: 0, profit: 0 }
-      map[p.produs].cantitate += p.cantitate
-      map[p.produs].vanzari_nete += p.vanzari_nete
-      map[p.produs].cost_achizitie += p.cost_achizitie
-      map[p.produs].profit += p.profit
+      // Grupam dupa cod (unic per produs) — daca nu are cod, fallback la nume
+      const key = p.cod ? p.cod : `__${p.produs}`
+      if (!map[key]) map[key] = { cod: p.cod, produs: p.produs, cantitate: 0, vanzari_nete: 0, cost_achizitie: 0, profit: 0 }
+      map[key].cantitate += p.cantitate
+      map[key].vanzari_nete += p.vanzari_nete
+      map[key].cost_achizitie += p.cost_achizitie
+      map[key].profit += p.profit
     })
     const rows = Object.values(map)
     if (profitSort === 'profit') return rows.sort((a, b) => b.profit - a.profit)
@@ -647,6 +654,7 @@ export default function RapoartePage() {
                       <tr>
                         <th className="text-left px-5 py-3 text-gray-600 font-semibold">#</th>
                         <th className="text-left px-5 py-3 text-gray-600 font-semibold">Produs</th>
+                        <th className="text-left px-5 py-3 text-gray-600 font-semibold">Cod</th>
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Cant.</th>
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Valoare vânz.</th>
                         <th className="text-right px-5 py-3 text-gray-600 font-semibold">Cost ach.</th>
@@ -657,9 +665,10 @@ export default function RapoartePage() {
                     </thead>
                     <tbody>
                       {topProduse.map((row, i) => (
-                        <tr key={row.produs} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                        <tr key={row.cod || row.produs} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
                           <td className="px-5 py-3 text-gray-400 font-mono text-xs">{i + 1}</td>
                           <td className="px-5 py-3 font-medium text-gray-900">{row.produs}</td>
+                          <td className="px-5 py-3 font-mono text-xs text-gray-900 whitespace-nowrap">{row.cod || '—'}</td>
                           <td className="px-5 py-3 text-right text-gray-600">{row.cantitate}</td>
                           <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmt(row.valoare)} RON</td>
                           <td className="px-5 py-3 text-right text-gray-500">{fmt(row.cost)} RON</td>
@@ -729,6 +738,7 @@ export default function RapoartePage() {
                       <tr>
                         <th className="text-left px-5 py-3 text-gray-700 font-semibold">#</th>
                         <th className="text-left px-5 py-3 text-gray-700 font-semibold">Produs</th>
+                        <th className="text-left px-5 py-3 text-gray-700 font-semibold">Cod</th>
                         <th className="text-right px-5 py-3 text-gray-700 font-semibold">Cant.</th>
                         <th className="text-right px-5 py-3 text-gray-700 font-semibold">Vânzări nete</th>
                         <th className="text-right px-5 py-3 text-gray-700 font-semibold">Cost achiziție</th>
@@ -742,9 +752,10 @@ export default function RapoartePage() {
                         const marja = row.vanzari_nete > 0 ? (row.profit / row.vanzari_nete) * 100 : 0
                         const adaos = row.cost_achizitie > 0 ? (row.profit / row.cost_achizitie) * 100 : 0
                         return (
-                          <tr key={row.produs} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                          <tr key={row.cod || row.produs} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
                             <td className="px-5 py-3 text-gray-400 font-mono text-xs">{i + 1}</td>
                             <td className="px-5 py-3 font-medium text-gray-900">{row.produs}</td>
+                            <td className="px-5 py-3 font-mono text-xs text-gray-900 whitespace-nowrap">{row.cod || '—'}</td>
                             <td className="px-5 py-3 text-right text-gray-700">{row.cantitate}</td>
                             <td className="px-5 py-3 text-right font-semibold text-gray-900">{fmt(row.vanzari_nete)} RON</td>
                             <td className="px-5 py-3 text-right text-gray-600">{fmt(row.cost_achizitie)} RON</td>
