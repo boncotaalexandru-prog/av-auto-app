@@ -28,6 +28,8 @@ const navItems: NavItem[] = [
   { label: 'Cheltuieli',       href: '/cheltuieli',       icon: '💸', adminOnly: true },
   { label: 'Parc Auto',        href: '/parc',             icon: '🚛', adminOnly: true },
   { label: 'Salarii',          href: '/salarii',          icon: '👥', adminOnly: true },
+  { label: 'Discounturi',      href: '/discounturi',      icon: '🏷️', adminOnly: true },
+  { label: 'Rezultate Lunare', href: '/rezultate-lunare', icon: '📈', adminOnly: true },
   { label: 'Setari',           href: '/setari',           icon: '⚙️', adminOnly: true },
 ]
 
