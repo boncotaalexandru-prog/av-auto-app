@@ -111,8 +111,8 @@ export default function SalariiContent() {
     setEroare(null)
     const [an, luna_nr] = lunaStr.split('-').map(Number)
     const start = `${an}-${String(luna_nr).padStart(2, '0')}-01`
-    const endDate = new Date(an, luna_nr, 0)
-    const end = endDate.toISOString().slice(0, 10)
+    const nextM = new Date(an, luna_nr, 1)
+    const nextMonthStr = `${nextM.getFullYear()}-${String(nextM.getMonth() + 1).padStart(2, '0')}-01`
 
     // Adaos brut: (pret_vanzare - pret_achizitie) * cantitate din facturi_produse
     // joinate cu facturi emisa/platita in luna respectiva
@@ -122,10 +122,11 @@ export default function SalariiContent() {
         .select('id')
         .in('status', ['emisa', 'platita'])
         .gte('data_emitere', start)
-        .lte('data_emitere', end),
+        .lt('data_emitere', nextMonthStr),
       supabase
         .from('facturi_produse')
-        .select('factura_id, pret_vanzare, pret_achizitie, cantitate'),
+        .select('factura_id, pret_vanzare, pret_achizitie, cantitate')
+        .limit(20000),
       supabase
         .from('salarii_lunare')
         .select('*')
