@@ -92,14 +92,17 @@ export default function OferteP() {
             .select('produs_id, produs_cod, cantitate')
             .or(orParts.join(','))
 
-          // Construieste map stoc: produs_id sau cod → cantitate totala
+          // Construieste map stoc indexat dupa AMBELE chei (produs_id SI produs_cod)
+          // astfel incat sa se gaseasca indiferent cum a fost adaugat produsul
           const stocMap: Record<string, number> = {}
           for (const row of stocRows ?? []) {
-            const key = row.produs_id ?? row.produs_cod ?? ''
-            if (key) stocMap[key] = (stocMap[key] ?? 0) + row.cantitate
+            const qty = row.cantitate ?? 0
+            if (row.produs_id)  stocMap[row.produs_id]  = (stocMap[row.produs_id]  ?? 0) + qty
+            if (row.produs_cod) stocMap[row.produs_cod] = (stocMap[row.produs_cod] ?? 0) + qty
           }
 
           // Per oferta: verifica daca TOATE produsele sunt acoperite de stoc
+          // Incearca produs_id intai, apoi cod — oricare dintre ele gasit e suficient
           const pregatite = new Set<string>()
           const perOferta: Record<string, typeof produse> = {}
           for (const p of produse) {
@@ -109,8 +112,10 @@ export default function OferteP() {
 
           for (const [ofertaId, linii] of Object.entries(perOferta)) {
             const toateAcoperite = linii.every(linie => {
-              const key = linie.produs_id ?? linie.cod ?? ''
-              return key && (stocMap[key] ?? 0) >= linie.cantitate
+              const qty = linie.cantitate ?? 1
+              const acoperitPrinId  = linie.produs_id && (stocMap[linie.produs_id] ?? 0) >= qty
+              const acoperitPrinCod = linie.cod       && (stocMap[linie.cod]       ?? 0) >= qty
+              return !!(acoperitPrinId || acoperitPrinCod)
             })
             if (toateAcoperite) pregatite.add(ofertaId)
           }
