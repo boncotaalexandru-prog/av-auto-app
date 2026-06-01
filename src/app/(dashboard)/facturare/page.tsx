@@ -82,7 +82,6 @@ function emptyRand(): RandFactura {
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   nefinalizata: { label: 'Nefinalizată', color: 'bg-orange-100 text-orange-800' },
   emisa:        { label: 'Emisă',        color: 'bg-blue-100 text-blue-800' },
-  platita:      { label: 'Plătită',      color: 'bg-green-100 text-green-800' },
   anulata:      { label: 'Anulată',      color: 'bg-red-100 text-red-800' },
   stornata:     { label: 'Stornată',     color: 'bg-purple-100 text-purple-800' },
 }
@@ -894,7 +893,7 @@ function FacturarePageInner() {
       .from('facturi')
       .select('id, numar, data_emitere')
       .eq('client_id', clientId)
-      .in('status', ['emisa', 'platita'])
+      .in('status', ['emisa'])
       .eq('tip', 'normala')
       .order('numar', { ascending: false })
 
@@ -1057,7 +1056,6 @@ function FacturarePageInner() {
               <option value="">Toate</option>
               <option value="nefinalizata">Nefinalizată</option>
               <option value="emisa">Emisă</option>
-              <option value="platita">Plătită</option>
               <option value="anulata">Anulată</option>
               <option value="stornata">Stornată</option>
             </select>

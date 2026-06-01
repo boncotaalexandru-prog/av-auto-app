@@ -212,18 +212,21 @@ export default function RezultateContent() {
         chRes, discRes,
         fixTplRes, fixLunRes,
       ] = await Promise.all([
-        // Facturi luna curenta (emisa + platita)
+        // Facturi luna curenta (emisa)
         supabase
           .from('facturi')
           .select('id, data_emitere, status, tip')
           .gte('data_emitere', luna + '-01')
           .lt('data_emitere', nextMonth(luna))
-          .in('status', ['emisa', 'platita']),
+          .in('status', ['emisa']),
 
         // Produse din toate facturile (filtram dupa factura_id mai jos)
+        // Excludem randurile cu pret_achizitie NULL (storni incomplete)
         supabase
           .from('facturi_produse')
           .select('factura_id, nume_produs, cod, cantitate, pret_vanzare, pret_achizitie')
+          .not('pret_achizitie', 'is', null)
+          .not('pret_vanzare', 'is', null)
           .limit(20000),
 
         // Stoc pentru furnizori

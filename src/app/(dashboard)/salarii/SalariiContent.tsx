@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getAdaosBrut } from '@/lib/getAdaosBrut'
 
 // ─── Tipuri ──────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ function luniDisponibile(): { value: string; label: string }[] {
   const now = new Date()
   for (let i = 0; i < 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const value = d.toISOString().slice(0, 7) // YYYY-MM
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` // YYYY-MM (local time, nu UTC)
     const label = d.toLocaleString('ro-RO', { month: 'long', year: 'numeric' })
     result.push({ value, label })
   }
@@ -106,46 +107,18 @@ export default function SalariiContent() {
   useEffect(() => { fetchAngajati() }, [])
 
   // ── Fetch adaos brut + salarii lunare ──
+  // Adaos brut vine direct din getAdaosBrut() — aceeasi sursa ca Rapoarte.
+  // Salarii nu face niciun calcul propriu.
   const fetchCalcDate = useCallback(async (lunaStr: string) => {
     setLoadingCalc(true)
     setEroare(null)
     const [an, luna_nr] = lunaStr.split('-').map(Number)
     const start = `${an}-${String(luna_nr).padStart(2, '0')}-01`
-    const nextM = new Date(an, luna_nr, 1)
-    const nextMonthStr = `${nextM.getFullYear()}-${String(nextM.getMonth() + 1).padStart(2, '0')}-01`
 
-    // Adaos brut: (pret_vanzare - pret_achizitie) * cantitate din facturi_produse
-    // joinate cu facturi emisa/platita in luna respectiva
-    const [fRaw, fpRaw, slRaw] = await Promise.all([
-      supabase
-        .from('facturi')
-        .select('id')
-        .in('status', ['emisa', 'platita'])
-        .gte('data_emitere', start)
-        .lt('data_emitere', nextMonthStr),
-      supabase
-        .from('facturi_produse')
-        .select('factura_id, pret_vanzare, pret_achizitie, cantitate')
-        .limit(20000),
-      supabase
-        .from('salarii_lunare')
-        .select('*')
-        .eq('luna', `${start}`),
+    const [adaos, slRaw] = await Promise.all([
+      getAdaosBrut(supabase, lunaStr),
+      supabase.from('salarii_lunare').select('*').eq('luna', start),
     ])
-
-    // Calculeaza adaos brut
-    const facturaIds = new Set((fRaw.data ?? []).map((f: { id: string }) => f.id))
-    const produse = (fpRaw.data ?? []) as Array<{
-      factura_id: string; pret_vanzare: number; pret_achizitie: number; cantitate: number
-    }>
-    const adaos = produse
-      .filter((p) => facturaIds.has(p.factura_id))
-      .reduce((sum, p) => {
-        const cant = p.cantitate ?? 1
-        const pv = p.pret_vanzare ?? 0
-        const pa = p.pret_achizitie ?? 0
-        return sum + cant * (pv - pa)
-      }, 0)
 
     setAdaosBrut(adaos)
     setSalariiLunare((slRaw.data ?? []) as SalariuLunar[])

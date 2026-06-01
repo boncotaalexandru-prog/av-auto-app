@@ -41,7 +41,6 @@ interface ProdusFactura {
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   nefinalizata: { label: 'Nefinalizată', color: 'bg-orange-100 text-orange-800' },
   emisa:        { label: 'Emisă',        color: 'bg-blue-100 text-blue-800' },
-  platita:      { label: 'Plătită',      color: 'bg-green-100 text-green-800' },
   anulata:      { label: 'Anulată',      color: 'bg-red-100 text-red-800' },
   stornata:     { label: 'Stornată',     color: 'bg-purple-100 text-purple-800' },
 }
@@ -239,7 +238,7 @@ export default function FacturaDetaliuPage() {
     setSalvandStatus(true)
     const supabase = createClient()
 
-    // Stocul se restituie DOAR dacă factura era emisa/platita (stocul a fost scăzut la emitere)
+    // Stocul se restituie DOAR dacă factura era emisa (stocul a fost scăzut la emitere)
     // Dacă era nefinalizata, stocul NU a fost scăzut → nu restituim
     if (!esteNefinalizata) {
       for (const p of produse) {
@@ -366,11 +365,6 @@ export default function FacturaDetaliuPage() {
           )}
           {factura.status === 'emisa' && factura.tip !== 'storno' && (
             <>
-              <button onClick={() => schimbaStatus('platita')} disabled={salvandStatus}
-                className="px-4 py-2 text-sm font-bold text-white rounded-lg disabled:opacity-40"
-                style={{ backgroundColor: '#16a34a' }}>
-                ✓ Marchează plătită
-              </button>
               <button onClick={storneazaIntegral} disabled={salvandStatus}
                 className="px-4 py-2 text-sm font-bold text-white rounded-lg disabled:opacity-40"
                 style={{ backgroundColor: '#7c3aed' }}>
@@ -379,19 +373,6 @@ export default function FacturaDetaliuPage() {
               <button onClick={stergeFactura} disabled={salvandStatus}
                 className="px-4 py-2 text-sm font-semibold text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40">
                 Șterge + restituie stoc
-              </button>
-            </>
-          )}
-          {factura.status === 'platita' && factura.tip !== 'storno' && (
-            <>
-              <button onClick={() => schimbaStatus('emisa')} disabled={salvandStatus}
-                className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40">
-                ↩ Anulează plata
-              </button>
-              <button onClick={storneazaIntegral} disabled={salvandStatus}
-                className="px-4 py-2 text-sm font-bold text-white rounded-lg disabled:opacity-40"
-                style={{ backgroundColor: '#7c3aed' }}>
-                ↩ Stornează integral
               </button>
             </>
           )}
