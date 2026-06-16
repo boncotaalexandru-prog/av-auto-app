@@ -206,28 +206,19 @@ export default function RezultateContent() {
       setEroare(null)
 
       const [
-        fRes, fpRes, sRes,
+        fRes, sRes,
         angRes, salRes,
         masRes, alRes, pcRes,
         chRes, discRes,
         fixTplRes, fixLunRes,
       ] = await Promise.all([
-        // Facturi luna curenta (emisa)
+        // Facturi luna curenta (emisa + stornata)
         supabase
           .from('facturi')
           .select('id, data_emitere, status, tip')
           .gte('data_emitere', luna + '-01')
           .lt('data_emitere', nextMonth(luna))
-          .in('status', ['emisa']),
-
-        // Produse din toate facturile (filtram dupa factura_id mai jos)
-        // Excludem randurile cu pret_achizitie NULL (storni incomplete)
-        supabase
-          .from('facturi_produse')
-          .select('factura_id, nume_produs, cod, cantitate, pret_vanzare, pret_achizitie')
-          .not('pret_achizitie', 'is', null)
-          .not('pret_vanzare', 'is', null)
-          .limit(20000),
+          .in('status', ['emisa', 'stornata']),
 
         // Stoc pentru furnizori
         supabase
@@ -282,8 +273,21 @@ export default function RezultateContent() {
 
       if (fRes.error) { setEroare(fRes.error.message); setLoading(false); return }
 
+      // Batch fetch facturi_produse doar pentru facturile lunii — evităm limita server 1000 rânduri
+      const facturaIdsLuna = (fRes.data ?? []).map((f: { id: string }) => f.id)
+      const BATCH = 100
+      const fpChunks = await Promise.all(
+        Array.from({ length: Math.ceil(facturaIdsLuna.length / BATCH) }, (_, i) =>
+          supabase
+            .from('facturi_produse')
+            .select('factura_id, nume_produs, cod, cantitate, pret_vanzare, pret_achizitie')
+            .in('factura_id', facturaIdsLuna.slice(i * BATCH, (i + 1) * BATCH))
+        )
+      )
+      const fpData = fpChunks.flatMap(r => r.data ?? [])
+
       setFacturi((fRes.data ?? []) as Factura[])
-      setFacturiProduse((fpRes.data ?? []) as FacturaProdus[])
+      setFacturiProduse(fpData as FacturaProdus[])
       setStoc((sRes.data ?? []) as StocItem[])
       setAngajati((angRes.data ?? []) as Angajat[])
       setSalariiLunare((salRes.data ?? []) as SalariuLunar[])
