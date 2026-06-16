@@ -111,9 +111,9 @@ export default function RapoartePage() {
   const [perioada, setPerioada] = useState<'30' | '90' | '365' | 'toate'>('30')
 
   // Filtru perioadă custom pentru profit pe produs și vânzări
-  const nowStr = new Date().toISOString().slice(0, 10)
-  const firstOfMonth = new Date(); firstOfMonth.setDate(1)
-  const firstOfMonthStr = firstOfMonth.toISOString().slice(0, 10)
+  const _d = new Date()
+  const nowStr = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`
+  const firstOfMonthStr = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-01`
   const [profitDe, setProfitDe] = useState(firstOfMonthStr)
   const [profitPana, setProfitPana] = useState(nowStr)
   const [profitSort, setProfitSort] = useState<'profit' | 'vanzari' | 'produs'>('profit')
@@ -121,21 +121,19 @@ export default function RapoartePage() {
   const [vanzariDe, setVanzariDe] = useState(firstOfMonthStr)
   const [vanzariPana, setVanzariPana] = useState(nowStr)
 
-  useEffect(() => {
-    async function load() {
+  async function load() {
       setLoading(true)
       const supabase = createClient()
 
-      // Query-uri separate, join în JS — evităm problemele cu FK-urile Supabase
-      const [oRaw, pRaw, clientiRaw, profilRaw, sRaw, nRaw, fRaw, fpRaw] = await Promise.all([
+      // Step 1: toate query-urile în paralel, inclusiv facturi (pentru IDs)
+      const [oRaw, pRaw, clientiRaw, profilRaw, sRaw, nRaw, fRaw] = await Promise.all([
         supabase.from('oferte').select('id, status, created_at, preluat_de, client_id').order('created_at', { ascending: false }).limit(500),
         supabase.from('oferte_produse').select('oferta_id, pret_vanzare, pret_achizitie, cantitate, produs_nume').limit(5000),
         supabase.from('clienti').select('id, denumire'),
         supabase.from('profiles').select('id, full_name, email'),
         supabase.from('stoc').select('produs_nume, produs_cod, cantitate, pret_achizitie, pret_lista, furnizor_nume').order('produs_nume'),
         supabase.from('nir').select('id, numar, data_intrare, furnizor_nume, total_fara_tva, total_cu_tva').order('data_intrare', { ascending: false }).limit(200),
-        supabase.from('facturi').select('id, data_emitere, client_id, tip').in('status', ['emisa', 'stornata']).order('data_emitere', { ascending: false }).limit(1000),
-        supabase.from('facturi_produse').select('factura_id, nume_produs, cod, cantitate, pret_vanzare, pret_achizitie').limit(10000),
+        supabase.from('facturi').select('id, data_emitere, client_id, tip').in('status', ['emisa', 'stornata']).order('data_emitere', { ascending: false }),
       ])
 
       // Mapuri pentru join rapid
@@ -174,8 +172,22 @@ export default function RapoartePage() {
         facturaMap[f.id] = { data_emitere: f.data_emitere, client_id: f.client_id, tip: f.tip ?? 'normala' }
       })
 
+      // Step 2: fetch facturi_produse în batch-uri de 100 IDs — evităm limita server 1000 rânduri
+      // Fără batching, rândurile noi (facturile de azi) sunt tăiate de limita heap-ului PostgREST
+      const facturaIds = Object.keys(facturaMap)
+      const BATCH = 100
+      const fpChunks = await Promise.all(
+        Array.from({ length: Math.ceil(facturaIds.length / BATCH) }, (_, i) =>
+          supabase
+            .from('facturi_produse')
+            .select('factura_id, nume_produs, cod, cantitate, pret_vanzare, pret_achizitie')
+            .in('factura_id', facturaIds.slice(i * BATCH, (i + 1) * BATCH))
+        )
+      )
+      const fpData = fpChunks.flatMap(r => r.data ?? [])
+
       // Construim randuri pentru profit pe produs (toate liniile)
-      const fpJoined = (fpRaw.data ?? []).map((p: { factura_id: string; nume_produs: string; cod: string | null; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => ({
+      const fpJoined = fpData.map((p: { factura_id: string; nume_produs: string; cod: string | null; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => ({
         cod: p.cod ?? '',
         produs: p.nume_produs ?? '',
         cantitate: p.cantitate ?? 1,
@@ -187,7 +199,7 @@ export default function RapoartePage() {
 
       // Randuri îmbogățite cu client și tip (pentru vânzări)
       // Storno-urile au cantitate negativa — le includem ca sa scada corect din totaluri
-      const fpRich: FacProdRich[] = (fpRaw.data ?? [])
+      const fpRich: FacProdRich[] = fpData
         .map((p: { factura_id: string; nume_produs: string; cod: string | null; cantitate: number; pret_vanzare: number; pret_achizitie: number }) => {
           const f = facturaMap[p.factura_id]
           const cant = p.cantitate ?? 1
@@ -216,9 +228,9 @@ export default function RapoartePage() {
       setFacturiProduse(fpJoined)
       setFacturiProduseRich(fpRich)
       setLoading(false)
-    }
-    load()
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
 
   // Filtrare după perioadă
   const cutoff = useMemo(() => {
@@ -394,8 +406,18 @@ export default function RapoartePage() {
           <p className="text-sm text-gray-500 mt-0.5">Statistici și analize</p>
         </div>
 
-        {/* Filtru perioadă */}
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => load()}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            <span className={loading ? 'animate-spin inline-block' : ''}>↻</span>
+            Reîncarcă
+          </button>
+
+          {/* Filtru perioadă */}
+          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1">
           {([['30', 'Ultima lună'], ['90', '3 luni'], ['365', 'Acest an'], ['toate', 'Toate']] as [string, string][]).map(([val, label]) => (
             <button
               key={val}
@@ -407,6 +429,7 @@ export default function RapoartePage() {
               {label}
             </button>
           ))}
+          </div>
         </div>
       </div>
 
