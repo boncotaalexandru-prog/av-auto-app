@@ -536,7 +536,7 @@ export default function OfertaPage() {
 
     // Helper: creaza ridicari pentru o lista de randuri + oferta_id
     async function insereazaRidicari(ofertaId: string, randuri: ConfirmaRand[]) {
-      const deRidicat = randuri.filter(r => r.furnizor_id !== null)
+      const deRidicat = randuri.filter(r => r.furnizor_id !== null || r.ora_ridicare === 'Stoc CT')
       if (!deRidicat.length) return true
       const { error } = await supabase.from('ridicari').insert(deRidicat.map(r => ({
         oferta_id: ofertaId,

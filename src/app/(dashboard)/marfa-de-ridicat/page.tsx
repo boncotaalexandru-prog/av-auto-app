@@ -84,7 +84,7 @@ export default function MarfaDeRidicatPage() {
   const [showFurnManual, setShowFurnManual] = useState(false)
   const [furnSearchManual, setFurnSearchManual] = useState('')
 
-  useEffect(() => { incarca() }, [])
+  useEffect(() => { incarca(afiseazaRidicate) }, [afiseazaRidicate])
 
   useEffect(() => {
     if (!showFurnManual) return
@@ -93,13 +93,16 @@ export default function MarfaDeRidicatPage() {
     q.then(({ data }) => setFurnizoriManual((data as {id: string; denumire: string}[]) ?? []))
   }, [furnSearchManual, showFurnManual])
 
-  async function incarca() {
-    const { data, error } = await createClient()
+  async function incarca(includeRidicate = false) {
+    setLoading(true)
+    let q = createClient()
       .from('ridicari')
       .select('*, oferte(numar)')
-      .or('furnizor_id.not.is.null,oferta_id.is.null')
+      .or('furnizor_id.not.is.null,oferta_id.is.null,ora_ridicare.eq.Stoc CT')
       .order('data_livrare', { ascending: true })
       .order('created_at', { ascending: true })
+    if (!includeRidicate) q = q.eq('ridicat', false)
+    const { data, error } = await q
     if (error) console.error('[Ridicari] Eroare query:', error)
     setRidicari((data as Ridicare[]) ?? [])
     setLoading(false)
