@@ -109,6 +109,8 @@ export default function GestiunePage() {
   const [stoc, setStoc] = useState<StocItem[]>([])
   const [loadingStoc, setLoadingStoc] = useState(true)
   const [cautareStoc, setCautareStoc] = useState('')
+  const [stocCautat, setStocCautat] = useState<StocItem[] | null>(null)
+  const [cautandStoc, setCautandStoc] = useState(false)
   // Rezervari: stoc_id (sau `cod:X`) → lista clienti care au produs in factura nefinalizata
   const [rezervari, setRezervari] = useState<Record<string, { client: string; cantitate: number }[]>>({})
 
@@ -165,6 +167,23 @@ export default function GestiunePage() {
     })
   }, [])
   useEffect(() => { if (tab === 'nir') incarcaNir() }, [tab, nirFiltruDe, nirFiltruPana])
+
+  useEffect(() => {
+    if (!cautareStoc.trim()) { setStocCautat(null); return }
+    setCautandStoc(true)
+    const t = setTimeout(async () => {
+      const q = cautareStoc.trim()
+      const { data } = await createClient().from('stoc')
+        .select('*')
+        .gt('cantitate', 0)
+        .or(`produs_nume.ilike.%${q}%,produs_cod.ilike.%${q}%,producator.ilike.%${q}%`)
+        .order('produs_nume')
+        .limit(200)
+      setStocCautat((data as StocItem[]) ?? [])
+      setCautandStoc(false)
+    }, 250)
+    return () => clearTimeout(t)
+  }, [cautareStoc])
 
   async function incarcaStoc() {
     setLoadingStoc(true)
@@ -632,17 +651,9 @@ export default function GestiunePage() {
     incarcaStoc()
   }
 
-  const stocFiltrat = stoc.filter(s => {
-    if (s.cantitate <= 0) return false
-    if (!cautareStoc.trim()) return true
-    const q = cautareStoc.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    const strip = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    return (
-      strip(s.produs_nume).includes(q) ||
-      strip(s.produs_cod ?? '').includes(q) ||
-      strip(s.producator ?? '').includes(q)
-    )
-  })
+  const stocFiltrat = cautareStoc.trim()
+    ? (stocCautat ?? [])
+    : stoc.filter(s => s.cantitate > 0)
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -712,7 +723,7 @@ export default function GestiunePage() {
                   <tr><td colSpan={9} className="text-center py-8 text-gray-600">Se încarcă...</td></tr>
                 ) : stocFiltrat.length === 0 ? (
                   <tr><td colSpan={9} className="text-center py-8 text-gray-600">
-                    {cautareStoc ? 'Niciun rezultat.' : 'Stocul este gol. Adaugă o intrare de marfă.'}
+                    {cautandStoc ? 'Se caută...' : cautareStoc ? 'Niciun rezultat.' : 'Stocul este gol. Adaugă o intrare de marfă.'}
                   </td></tr>
                 ) : stocFiltrat.map(s => (
                   <tr key={s.id} className="border-t border-gray-100 hover:bg-gray-50">
