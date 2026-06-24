@@ -64,7 +64,7 @@ interface OfertaProdus {
   produse: { id: string; grup_echivalente_id: string | null } | null
 }
 
-interface ProdusSearch { id: string; cod: string | null; nume: string; unitate: string | null; pret: number | null; producator: string | null }
+interface ProdusSearch { id: string; stoc_id?: string; stoc_pret_lista?: number | null; cod: string | null; nume: string; unitate: string | null; pret: number | null; producator: string | null }
 interface FurnizorSearch { id: string; denumire: string; is_favorit: boolean }
 interface StocOptiune { id: string; pret_achizitie: number; pret_lista: number | null; cantitate: number; furnizor_nume: string | null; updated_at: string }
 
@@ -177,7 +177,7 @@ export default function OfertaPage() {
     })
   }, [id])
 
-  // Cautare produse din catalog + stoc disponibil
+  // Cautare produse din catalog + stoc disponibil (inclusiv stoc fara link la produse)
   useEffect(() => {
     if (!prodSearch.trim()) { setProdResults([]); setStocMap({}); return }
     const supabase = createClient()
@@ -187,10 +187,31 @@ export default function OfertaPage() {
       .or(`nume.ilike.%${q}%,cod.ilike.%${q}%`)
       .limit(15)
       .then(async ({ data }) => {
-        setProdResults(data ?? [])
-        if (!data?.length) return
-        const ids = data.map(p => p.id)
-        const cods = data.filter(p => p.cod).map(p => p.cod as string)
+        const prodList = data ?? []
+        // Cauta si in stoc direct (produse importate fara link in catalog)
+        const { data: stocOrfan } = await supabase.from('stoc')
+          .select('id, produs_cod, produs_nume, unitate, pret_achizitie, pret_lista, producator, cantitate')
+          .gt('cantitate', 0)
+          .is('produs_id', null)
+          .or(`produs_nume.ilike.%${q}%,produs_cod.ilike.%${q}%`)
+          .limit(5)
+        // Exclude stoc entries deja acoperite de un produs din catalog (acelasi cod)
+        const prodCods = new Set(prodList.filter(p => p.cod).map(p => p.cod as string))
+        const stocExtra: ProdusSearch[] = (stocOrfan ?? [])
+          .filter(s => !s.produs_cod || !prodCods.has(s.produs_cod))
+          .map(s => ({
+            id: '',
+            stoc_id: s.id,
+            stoc_pret_lista: s.pret_lista,
+            cod: s.produs_cod,
+            nume: s.produs_nume,
+            unitate: s.unitate,
+            pret: s.pret_achizitie,
+            producator: s.producator,
+          }))
+        setProdResults([...prodList, ...stocExtra])
+        const ids = prodList.map(p => p.id)
+        const cods = [...prodList, ...stocExtra].filter(p => p.cod).map(p => p.cod as string)
         const orParts = [`produs_id.in.(${ids.join(',')})`]
         if (cods.length) orParts.push(`produs_cod.in.(${cods.join(',')})`)
         const { data: stocData } = await supabase.from('stoc')
@@ -247,6 +268,30 @@ export default function OfertaPage() {
   async function selectProdus(p: ProdusSearch) {
     const supabase = createClient()
     setPretSpecialClient(null)
+
+    // Produs importat direct in stoc, fara intrare in catalog
+    if (!p.id && p.stoc_id) {
+      setForm(f => ({
+        ...f,
+        produs_id: null,
+        stoc_id: p.stoc_id!,
+        nume_produs: p.nume,
+        cod: p.cod ?? '',
+        unitate: p.unitate ?? '',
+        pret_achizitie: p.pret ?? 0,
+        pret_vanzare: p.stoc_pret_lista ?? (p.pret ? parseFloat((p.pret * 1.30).toFixed(2)) : 0),
+        producator: p.producator ?? '',
+      }))
+      if (p.pret && (p.stoc_pret_lista ?? 0) > 0) {
+        setAdaosInput((((p.stoc_pret_lista! - p.pret) / p.pret) * 100).toFixed(1))
+      }
+      setProdSearch(p.nume)
+      setShowProdList(false)
+      setStocOptiuni([])
+      setStocOptiuneIdx(0)
+      setModalEchivalente([])
+      return
+    }
 
     // Cauta in stoc strict dupa codul produsului selectat (nu ilike pe nume — ar prinde produse similare)
     const orParts: string[] = [`produs_id.eq.${p.id}`]
@@ -1186,15 +1231,18 @@ export default function OfertaPage() {
                   <span className="absolute left-3 top-2.5 text-gray-600 text-sm">🔍</span>
                   {showProdList && prodResults.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {prodResults.map(p => {
-                        const cantStoc = stocMap[p.id] ?? (p.cod ? stocMap[p.cod] : 0) ?? 0
+                      {prodResults.map((p, idx) => {
+                        const cantStoc = p.stoc_id
+                          ? stocMap[p.cod ?? ''] ?? 0
+                          : stocMap[p.id] ?? (p.cod ? stocMap[p.cod] : 0) ?? 0
                         return (
-                          <button key={p.id} onClick={() => selectProdus(p)}
+                          <button key={p.id || p.stoc_id || idx} onClick={() => selectProdus(p)}
                             className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0 flex items-center justify-between gap-2">
                             <span>
                               <span className="font-medium text-gray-900">{p.nume}</span>
                               {p.cod && <span className="text-gray-500 ml-2 font-mono text-xs">{p.cod}</span>}
                               {p.producator && <span className="text-gray-500 ml-1 text-xs">· {p.producator}</span>}
+                              {p.stoc_id && <span className="text-amber-600 ml-1 text-xs">· stoc direct</span>}
                             </span>
                             <span className={`text-xs font-semibold whitespace-nowrap px-1.5 py-0.5 rounded ${cantStoc > 0 ? 'text-green-700 bg-green-50' : 'text-gray-400 bg-gray-100'}`}>
                               stoc: {cantStoc}

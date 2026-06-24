@@ -609,7 +609,22 @@ export default function GestiunePage() {
     const batch = 50
     for (let i = 0; i < importRows.length; i += batch) {
       const chunk = importRows.slice(i, i + batch)
-      await supabase.from('stoc').insert(chunk.map(p => ({
+      // Creare intrari in produse (pentru a fi gasite la cautarea din oferte)
+      const prodIds: (string | null)[] = await Promise.all(chunk.map(async p => {
+        const cod = p.produs_cod?.trim() || null
+        if (cod) {
+          const { data: ex } = await supabase.from('produse').select('id').eq('cod', cod).maybeSingle()
+          if (ex) return ex.id
+        }
+        const { data: nou } = await supabase.from('produse').insert({
+          nume: p.produs_nume.trim(),
+          cod: cod,
+          unitate: p.unitate || 'buc',
+        }).select('id').single()
+        return nou?.id ?? null
+      }))
+      await supabase.from('stoc').insert(chunk.map((p, j) => ({
+        produs_id: prodIds[j],
         produs_cod: p.produs_cod || null,
         produs_nume: p.produs_nume,
         unitate: p.unitate || 'buc',
