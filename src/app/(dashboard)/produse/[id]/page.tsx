@@ -102,22 +102,24 @@ export default function ProdusDetaliuPage() {
       })
     }
 
+    const OK = Promise.resolve({ data: null, error: null })
     const [nirA, nirB, ofA, ofB, fpById, fpByCod, fpByStoc, fpByNume] = await Promise.all([
       // NIR
       supabase.from('nir_produse').select(NIR_SEL).or(orPartsNir.join(',')),
-      supabase.from('nir_produse').select(NIR_SEL).ilike('produs_nume', p.nume),
+      // fallback pe nume doar daca produsul nu are cod (pentru a evita cross-match intre produse omonime)
+      p.cod ? OK : supabase.from('nir_produse').select(NIR_SEL).ilike('produs_nume', p.nume),
       // Oferte
       supabase.from('oferte_produse').select(OF_SEL).or(orPartsCod.join(',')),
-      supabase.from('oferte_produse').select(OF_SEL).ilike('nume_produs', p.nume),
+      p.cod ? OK : supabase.from('oferte_produse').select(OF_SEL).ilike('nume_produs', p.nume),
       // Facturi — 4 strategii separate, fără join anidat (ca rapoarte)
       supabase.from('facturi_produse').select(FP_SEL).eq('produs_id', id),
       p.cod
         ? supabase.from('facturi_produse').select(FP_SEL).eq('cod', p.cod)
-        : Promise.resolve({ data: null, error: null }),
+        : OK,
       allStocIds.length
         ? supabase.from('facturi_produse').select(FP_SEL).in('stoc_id', allStocIds)
-        : Promise.resolve({ data: null, error: null }),
-      supabase.from('facturi_produse').select(FP_SEL).ilike('nume_produs', p.nume),
+        : OK,
+      p.cod ? OK : supabase.from('facturi_produse').select(FP_SEL).ilike('nume_produs', p.nume),
     ])
 
     const nirRows = mergeUnique(nirA.data, nirB.data)
