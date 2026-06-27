@@ -114,6 +114,7 @@ export default function ParcContent() {
 
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editAlimentareId, setEditAlimentareId] = useState<string | null>(null)
 
   // ── Fetch masini ──
   async function fetchMasini() {
@@ -173,7 +174,7 @@ export default function ParcContent() {
     setSaving(false)
   }
 
-  // ── Adauga alimentare ──
+  // ── Adauga / editeaza alimentare ──
   async function handleAddAlimentare() {
     if (!selectedMasina) return
     if (!formAlimentare.data || !formAlimentare.km || !formAlimentare.litri || !formAlimentare.total_ron) {
@@ -181,22 +182,39 @@ export default function ParcContent() {
       return
     }
     setSaving(true)
-    const { error } = await supabase.from('parc_alimentari').insert({
-      masina_id: selectedMasina.id,
+    const payload = {
       data: formAlimentare.data,
       km: Number(formAlimentare.km),
       litri: Number(formAlimentare.litri),
       total_ron: Number(formAlimentare.total_ron),
       tip_combustibil: formAlimentare.tip_combustibil,
       statie: formAlimentare.statie || null,
-    })
+    }
+    const { error } = editAlimentareId
+      ? await supabase.from('parc_alimentari').update(payload).eq('id', editAlimentareId)
+      : await supabase.from('parc_alimentari').insert({ masina_id: selectedMasina.id, ...payload })
     if (error) setEroare(error.message)
     else {
       setFormAlimentare({ data: todayIso(), km: '', litri: '', total_ron: '', tip_combustibil: 'Motorina', statie: '' })
       setShowAddAlimentare(false)
+      setEditAlimentareId(null)
       await fetchDetaliiMasina(selectedMasina.id)
     }
     setSaving(false)
+  }
+
+  function handleStartEditAlimentare(a: Alimentare) {
+    setEditAlimentareId(a.id)
+    setFormAlimentare({
+      data: a.data,
+      km: String(a.km),
+      litri: String(a.litri),
+      total_ron: String(a.total_ron),
+      tip_combustibil: a.tip_combustibil,
+      statie: a.statie ?? '',
+    })
+    setShowAddAlimentare(true)
+    setEroare(null)
   }
 
   // ── Adauga cheltuiala masina ──
@@ -530,9 +548,9 @@ export default function ParcContent() {
                         <div className="flex gap-2">
                           <button onClick={handleAddAlimentare} disabled={saving}
                             className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                            {saving ? '...' : 'Salveaza'}
+                            {saving ? '...' : editAlimentareId ? 'Salveaza modificarile' : 'Salveaza'}
                           </button>
-                          <button onClick={() => setShowAddAlimentare(false)}
+                          <button onClick={() => { setShowAddAlimentare(false); setEditAlimentareId(null); setFormAlimentare({ data: todayIso(), km: '', litri: '', total_ron: '', tip_combustibil: 'Motorina', statie: '' }) }}
                             className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded text-xs hover:bg-gray-50 transition-colors">
                             Anuleaza
                           </button>
@@ -576,13 +594,21 @@ export default function ParcContent() {
                                 <td className="px-4 py-2">{a.tip_combustibil}</td>
                                 <td className="px-4 py-2 text-gray-500">{a.statie ?? '—'}</td>
                                 <td className="px-4 py-2 text-right">
-                                  <button
-                                    onClick={() => handleDeleteAlimentare(a.id)}
-                                    disabled={deletingId === a.id}
-                                    className="text-red-500 hover:text-red-700 disabled:opacity-40 transition-colors"
-                                  >
-                                    Sterge
-                                  </button>
+                                  <div className="flex gap-3 justify-end">
+                                    <button
+                                      onClick={() => handleStartEditAlimentare(a)}
+                                      className="text-blue-500 hover:text-blue-700 transition-colors"
+                                    >
+                                      Editeaza
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteAlimentare(a.id)}
+                                      disabled={deletingId === a.id}
+                                      className="text-red-500 hover:text-red-700 disabled:opacity-40 transition-colors"
+                                    >
+                                      Sterge
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
