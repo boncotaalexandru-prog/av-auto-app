@@ -657,8 +657,8 @@ export default function GestiunePage() {
     if (isNaN(delta) || delta === 0) { alert('Introdu o cantitate diferită de 0 (pozitiv = adaugi, negativ = scazi)'); return }
     setSalvandAjustare(true)
     const supabase = createClient()
-    const item = stoc.find(s => s.id === ajustareStocId)
-    if (!item) return
+    const item = stoc.find(s => s.id === ajustareStocId) ?? (stocCautat ?? []).find(s => s.id === ajustareStocId)
+    if (!item) { setSalvandAjustare(false); return }
     const nouaCantitate = item.cantitate + delta
     await supabase.from('stoc').update({ cantitate: nouaCantitate, updated_at: new Date().toISOString() }).eq('id', ajustareStocId)
     setSalvandAjustare(false)
