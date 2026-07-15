@@ -14,7 +14,10 @@ interface Produs {
 
 interface EditRow {
   id: string
+  nume: string
+  cod: string
   producator: string
+  unitate: string
 }
 
 export default function TabelProduse({ refresh }: { refresh: number }) {
@@ -53,10 +56,14 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
 
   async function saveEdit() {
     if (!editing) return
+    if (!editing.nume.trim()) return
     setSaving(true)
     const supabase = createClient()
     await supabase.from('produse').update({
-      producator: editing.producator || null,
+      nume: editing.nume.trim(),
+      cod: editing.cod.trim() || null,
+      producator: editing.producator.trim() || null,
+      unitate: editing.unitate.trim() || null,
       updated_at: new Date().toISOString(),
     }).eq('id', editing.id)
     setSaving(false)
@@ -100,8 +107,32 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                 {produse.map(p => (
                   <tr key={p.id} className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
                     onClick={e => { if ((e.target as HTMLElement).closest('button,input')) return; router.push(`/produse/${p.id}`) }}>
-                    <td className="px-4 py-2.5 text-gray-900 font-medium hover:text-blue-700">{p.nume}</td>
-                    <td className="px-4 py-2.5 text-gray-900 font-mono text-xs">{p.cod || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-900 font-medium">
+                      {editing?.id === p.id ? (
+                        <input
+                          type="text"
+                          value={editing.nume}
+                          onChange={e => setEditing({ ...editing, nume: e.target.value })}
+                          className="w-full px-2 py-1 border border-blue-400 rounded text-sm text-gray-900 font-medium"
+                          placeholder="Denumire"
+                        />
+                      ) : (
+                        <span className="hover:text-blue-700">{p.nume}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-900 font-mono text-xs">
+                      {editing?.id === p.id ? (
+                        <input
+                          type="text"
+                          value={editing.cod}
+                          onChange={e => setEditing({ ...editing, cod: e.target.value })}
+                          className="w-full px-2 py-1 border border-blue-400 rounded text-xs text-gray-900 font-mono"
+                          placeholder="Cod"
+                        />
+                      ) : (
+                        p.cod || '—'
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-gray-900">
                       {editing?.id === p.id ? (
                         <input
@@ -115,7 +146,19 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                         p.producator || <span className="text-gray-900">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-900">{p.unitate || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-900">
+                      {editing?.id === p.id ? (
+                        <input
+                          type="text"
+                          value={editing.unitate}
+                          onChange={e => setEditing({ ...editing, unitate: e.target.value })}
+                          className="w-32 px-2 py-1 border border-blue-400 rounded text-sm text-gray-900"
+                          placeholder="UM"
+                        />
+                      ) : (
+                        p.unitate || '—'
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right">
                       {editing?.id === p.id ? (
                         <div className="flex gap-2 justify-end">
@@ -136,7 +179,7 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
                       ) : (
                         <div className="flex gap-2 justify-end">
                           <button
-                            onClick={() => setEditing({ id: p.id, producator: p.producator ?? '' })}
+                            onClick={() => setEditing({ id: p.id, nume: p.nume, cod: p.cod ?? '', producator: p.producator ?? '', unitate: p.unitate ?? '' })}
                             className="text-xs text-blue-600 hover:underline"
                           >
                             Editeaza
