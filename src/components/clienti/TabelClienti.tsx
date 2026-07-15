@@ -22,6 +22,7 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
   const [page, setPage] = useState(0)
   const pageSize = 50
   const router = useRouter()
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     setPage(0)
@@ -48,6 +49,16 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
       setLoading(false)
     })
   }, [page, search, refresh])
+
+  async function handleDelete(id: string, denumire: string) {
+    if (!confirm(`Stergi clientul "${denumire}"? Aceasta actiune nu poate fi anulata.`)) return
+    setDeletingId(id)
+    const supabase = createClient()
+    const { error } = await supabase.from('clienti').delete().eq('id', id)
+    if (error) alert(error.message)
+    else setClienti(prev => prev.filter(c => c.id !== id))
+    setDeletingId(null)
+  }
 
   return (
     <div className="space-y-4">
@@ -79,6 +90,7 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Judet</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Telefon</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Contract</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -109,6 +121,15 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
                           Nu
                         </span>
                       )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        onClick={() => handleDelete(c.id, c.denumire)}
+                        disabled={deletingId === c.id}
+                        className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40 transition-colors"
+                      >
+                        Sterge
+                      </button>
                     </td>
                   </tr>
                 ))}
