@@ -132,14 +132,20 @@ export default function EchivalentePage() {
   async function scoateDinGrup(produsId: string, grupId: string) {
     setStergand(produsId)
     const supabase = createClient()
-    const grup = grupuri.find(g => g.id === grupId)
 
     await supabase.from('produse').update({ grup_echivalente_id: null }).eq('id', produsId)
 
-    // Dacă rămâne un singur produs, îl scoatem și pe el și ștergem grupul
-    if (grup && grup.produse.length <= 2) {
-      const ramas = grup.produse.find(p => p.id !== produsId)
-      if (ramas) await supabase.from('produse').update({ grup_echivalente_id: null }).eq('id', ramas.id)
+    // Verificam din DB cate produse au ramas in grup (nu din state local care poate fi stale)
+    const { count } = await supabase.from('produse')
+      .select('*', { count: 'exact', head: true })
+      .eq('grup_echivalente_id', grupId)
+
+    if ((count ?? 0) <= 1) {
+      if ((count ?? 0) === 1) {
+        const { data: ramas } = await supabase.from('produse')
+          .select('id').eq('grup_echivalente_id', grupId).single()
+        if (ramas) await supabase.from('produse').update({ grup_echivalente_id: null }).eq('id', ramas.id)
+      }
       await supabase.from('echivalente_grupuri').delete().eq('id', grupId)
     }
 
@@ -149,7 +155,11 @@ export default function EchivalentePage() {
 
   async function adaugaLaGrupExistent(produs: CatalogProdus, grupId: string) {
     const supabase = createClient()
-    const altGrupId = produs.grup_echivalente_id
+
+    // Re-fetch din DB ca sa evitam state local stale
+    const { data: fresh } = await supabase.from('produse')
+      .select('grup_echivalente_id').eq('id', produs.id).single()
+    const altGrupId = fresh?.grup_echivalente_id ?? null
 
     if (!altGrupId) {
       await supabase.from('produse').update({ grup_echivalente_id: grupId }).eq('id', produs.id)
@@ -169,12 +179,19 @@ export default function EchivalentePage() {
     setCreandGrup(true)
     const supabase = createClient()
 
-    // Gasim daca vreunul are deja un grup
-    const cuGrup = selectateNouGrup.find(p => p.grup_echivalente_id)
+    // Re-fetch grupurile reale din DB (evitam state local / search results stale)
+    const ids = selectateNouGrup.map(p => p.id)
+    const { data: freshProduse } = await supabase.from('produse')
+      .select('id, grup_echivalente_id')
+      .in('id', ids)
+
+    const grupuriReale = (freshProduse ?? []).map(p => p.grup_echivalente_id).filter(Boolean) as string[]
+    const existingGrupId = grupuriReale[0] ?? null
+
     let grupId: string
 
-    if (cuGrup?.grup_echivalente_id) {
-      grupId = cuGrup.grup_echivalente_id
+    if (existingGrupId) {
+      grupId = existingGrupId
     } else {
       const { data, error } = await supabase.from('echivalente_grupuri')
         .insert({ created_at: new Date().toISOString() }).select('id').single()
@@ -186,13 +203,10 @@ export default function EchivalentePage() {
       grupId = data.id
     }
 
-    const ids = selectateNouGrup.map(p => p.id)
     await supabase.from('produse').update({ grup_echivalente_id: grupId }).in('id', ids)
 
-    // Merge alte grupuri dacă există
-    const alteGrupuri = selectateNouGrup
-      .filter(p => p.grup_echivalente_id && p.grup_echivalente_id !== grupId)
-      .map(p => p.grup_echivalente_id!)
+    // Merge alte grupuri diferite (deduplicat)
+    const alteGrupuri = [...new Set(grupuriReale.filter(gid => gid !== grupId))]
     for (const gid of alteGrupuri) {
       await supabase.from('produse').update({ grup_echivalente_id: grupId }).eq('grup_echivalente_id', gid)
       await supabase.from('echivalente_grupuri').delete().eq('id', gid)
