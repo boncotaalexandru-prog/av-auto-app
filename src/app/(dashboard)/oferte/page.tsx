@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import OfertaNoua from '@/components/oferte/OfertaNoua'
@@ -45,24 +45,45 @@ export default function OferteP() {
   // Filtre
   const [filtruStatus, setFiltruStatus] = useState<string>('toate')
   const [filtruClient, setFiltruClient] = useState<string>('')
+  const [filtruClientDebounced, setFiltruClientDebounced] = useState<string>('')
   const [filtruDeLa, setFiltruDeLa] = useState(defaultDeLa())
   const [filtruPanaLa, setFiltruPanaLa] = useState(defaultPanaLa())
   const [shortcutActiv, setShortcutActiv] = useState<string>('30 zile')
 
   const router = useRouter()
 
+  // Debounce filtru client 300ms
+  useEffect(() => {
+    const t = setTimeout(() => setFiltruClientDebounced(filtruClient), 300)
+    return () => clearTimeout(t)
+  }, [filtruClient])
+
   useEffect(() => {
     setLoading(true)
     const supabase = createClient()
 
-    let query = supabase
-      .from('oferte')
-      .select('id, status, necesar_piese, created_at, preluat_de, client_id, clienti(denumire), clienti_masini(nr_inmatriculare, marca)')
-      .gte('created_at', filtruDeLa + 'T00:00:00')
-      .lte('created_at', filtruPanaLa + 'T23:59:59')
-      .order('created_at', { ascending: false })
+    async function incarca() {
+      let query = supabase
+        .from('oferte')
+        .select('id, status, necesar_piese, created_at, preluat_de, client_id, clienti(denumire), clienti_masini(nr_inmatriculare, marca)')
+        .gte('created_at', filtruDeLa + 'T00:00:00')
+        .lte('created_at', filtruPanaLa + 'T23:59:59')
+        .order('created_at', { ascending: false })
 
-    query.then(({ data }) => {
+      // Filtre server-side — evita cap-ul PostgREST de 1000 rânduri
+      if (filtruStatus !== 'toate') query = query.eq('status', filtruStatus)
+
+      if (filtruClientDebounced.trim()) {
+        const { data: clientiMatch } = await supabase
+          .from('clienti')
+          .select('id')
+          .ilike('denumire', `%${filtruClientDebounced.trim()}%`)
+        const ids = (clientiMatch ?? []).map((c: { id: string }) => c.id)
+        if (!ids.length) { setOferte([]); setLoading(false); return }
+        query = query.in('client_id', ids)
+      }
+
+      const { data } = await query
       const list = (data as unknown as Oferta[]) ?? []
       setOferte(list)
       setLoading(false)
@@ -71,68 +92,56 @@ export default function OferteP() {
       const confirmate = list.filter(o => o.status === 'confirmata').map(o => o.id)
       if (!confirmate.length) { setOfertePregate(new Set()); return }
 
-      supabase
+      const { data: produse } = await supabase
         .from('oferte_produse')
         .select('oferta_id, produs_id, cod, cantitate')
         .in('oferta_id', confirmate)
-        .then(async ({ data: produse }) => {
-          if (!produse?.length) { setOfertePregate(new Set()); return }
 
-          // Aduna toti produs_id si cod-uri unice
-          const toateProdusIds = [...new Set(produse.filter(p => p.produs_id).map(p => p.produs_id as string))]
-          const toateCoduri = [...new Set(produse.filter(p => !p.produs_id && p.cod).map(p => p.cod as string))]
+      if (!produse?.length) { setOfertePregate(new Set()); return }
 
-          const orParts: string[] = []
-          if (toateProdusIds.length) orParts.push(`produs_id.in.(${toateProdusIds.join(',')})`)
-          if (toateCoduri.length) orParts.push(`produs_cod.in.(${toateCoduri.join(',')})`)
-          if (!orParts.length) { setOfertePregate(new Set()); return }
+      const toateProdusIds = [...new Set(produse.filter(p => p.produs_id).map(p => p.produs_id as string))]
+      const toateCoduri = [...new Set(produse.filter(p => !p.produs_id && p.cod).map(p => p.cod as string))]
 
-          const { data: stocRows } = await supabase
-            .from('stoc')
-            .select('produs_id, produs_cod, cantitate')
-            .or(orParts.join(','))
+      const orParts: string[] = []
+      if (toateProdusIds.length) orParts.push(`produs_id.in.(${toateProdusIds.join(',')})`)
+      if (toateCoduri.length) orParts.push(`produs_cod.in.(${toateCoduri.join(',')})`)
+      if (!orParts.length) { setOfertePregate(new Set()); return }
 
-          // Construieste map stoc indexat dupa AMBELE chei (produs_id SI produs_cod)
-          // astfel incat sa se gaseasca indiferent cum a fost adaugat produsul
-          const stocMap: Record<string, number> = {}
-          for (const row of stocRows ?? []) {
-            const qty = row.cantitate ?? 0
-            if (row.produs_id)  stocMap[row.produs_id]  = (stocMap[row.produs_id]  ?? 0) + qty
-            if (row.produs_cod) stocMap[row.produs_cod] = (stocMap[row.produs_cod] ?? 0) + qty
-          }
+      const { data: stocRows } = await supabase
+        .from('stoc')
+        .select('produs_id, produs_cod, cantitate')
+        .or(orParts.join(','))
 
-          // Per oferta: verifica daca TOATE produsele sunt acoperite de stoc
-          // Incearca produs_id intai, apoi cod — oricare dintre ele gasit e suficient
-          const pregatite = new Set<string>()
-          const perOferta: Record<string, typeof produse> = {}
-          for (const p of produse) {
-            if (!perOferta[p.oferta_id]) perOferta[p.oferta_id] = []
-            perOferta[p.oferta_id].push(p)
-          }
+      const stocMap: Record<string, number> = {}
+      for (const row of stocRows ?? []) {
+        const qty = row.cantitate ?? 0
+        if (row.produs_id)  stocMap[row.produs_id]  = (stocMap[row.produs_id]  ?? 0) + qty
+        if (row.produs_cod) stocMap[row.produs_cod] = (stocMap[row.produs_cod] ?? 0) + qty
+      }
 
-          for (const [ofertaId, linii] of Object.entries(perOferta)) {
-            const toateAcoperite = linii.every(linie => {
-              const qty = linie.cantitate ?? 1
-              const acoperitPrinId  = linie.produs_id && (stocMap[linie.produs_id] ?? 0) >= qty
-              const acoperitPrinCod = linie.cod       && (stocMap[linie.cod]       ?? 0) >= qty
-              return !!(acoperitPrinId || acoperitPrinCod)
-            })
-            if (toateAcoperite) pregatite.add(ofertaId)
-          }
-
-          setOfertePregate(pregatite)
+      const pregatite = new Set<string>()
+      const perOferta: Record<string, typeof produse> = {}
+      for (const p of produse) {
+        if (!perOferta[p.oferta_id]) perOferta[p.oferta_id] = []
+        perOferta[p.oferta_id].push(p)
+      }
+      for (const [ofertaId, linii] of Object.entries(perOferta)) {
+        const toateAcoperite = linii.every(linie => {
+          const qty = linie.cantitate ?? 1
+          const acoperitPrinId  = linie.produs_id && (stocMap[linie.produs_id] ?? 0) >= qty
+          const acoperitPrinCod = linie.cod       && (stocMap[linie.cod]       ?? 0) >= qty
+          return !!(acoperitPrinId || acoperitPrinCod)
         })
-    })
-  }, [refresh, filtruDeLa, filtruPanaLa])
+        if (toateAcoperite) pregatite.add(ofertaId)
+      }
+      setOfertePregate(pregatite)
+    }
 
-  // Aplicare filtre client + status (client-side dupa fetch)
-  const oferteAfisate = useMemo(() => {
-    return oferte.filter(o => {
-      const matchStatus = filtruStatus === 'toate' || o.status === filtruStatus
-      const matchClient = !filtruClient || o.clienti?.denumire?.toLowerCase().includes(filtruClient.toLowerCase())
-      return matchStatus && matchClient
-    })
-  }, [oferte, filtruStatus, filtruClient])
+    incarca()
+  }, [refresh, filtruDeLa, filtruPanaLa, filtruStatus, filtruClientDebounced])
+
+  // Filtrele sunt acum server-side; oferteAfisate = toate ofertele încărcate
+  const oferteAfisate = oferte
 
   async function preiaOferta(e: React.MouseEvent, ofertaId: string) {
     e.stopPropagation()
@@ -301,7 +310,7 @@ export default function OferteP() {
       {/* Contor rezultate */}
       <p className="text-sm text-gray-500">
         {oferteAfisate.length} {oferteAfisate.length === 1 ? 'ofertă' : 'oferte'}
-        {filtreleActive ? ` din ${oferte.length} în perioadă` : ' în perioadă'}
+        {filtreleActive ? ' (filtrate)' : ' în perioadă'}
       </p>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
