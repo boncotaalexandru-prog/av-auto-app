@@ -245,8 +245,8 @@ function FacturarePageInner() {
         .eq('oferta_id', ofertaId)
       if (!opRows?.length) { setView('nou'); return }
 
-      const randuriFilled: RandFactura[] = await Promise.all(opRows.map(async (p) => {
-        // Cauta optiunile din stoc pentru acest produs
+      const randuriFilled: RandFactura[] = (await Promise.all(opRows.map(async (p): Promise<RandFactura[]> => {
+        // Cauta optiunile din stoc pentru acest produs (FIFO: cel mai vechi first)
         const orParts: string[] = []
         if (p.produs_id) orParts.push(`produs_id.eq.${p.produs_id}`)
         if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
@@ -261,27 +261,53 @@ function FacturarePageInner() {
         }
 
         const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
-        // Daca stoc_id din oferta e inca valid, foloseste-l
-        const idxInOptiuni = p.stoc_id ? optiuni.findIndex(o => o.id === p.stoc_id) : 0
-        const stocIdx = idxInOptiuni >= 0 ? idxInOptiuni : 0
-        const optSelec = optiuni[stocIdx]
 
-        return {
-          _key: Math.random().toString(36).slice(2),
-          produs_id: p.produs_id ?? null,
-          stoc_id: optSelec?.id ?? p.stoc_id ?? null,
-          nume_produs: p.nume_produs ?? '',
-          cod: p.cod ?? '',
-          producator: p.producator ?? '',
-          unitate: p.unitate ?? 'buc',
-          cantitate: p.cantitate ?? 1,
-          pret_achizitie: optSelec?.pret_achizitie ?? p.pret_achizitie ?? 0,
-          pret_vanzare: p.pret_vanzare ?? 0,
-          stoc_disponibil: totalDisponibil,
-          stoc_optiuni: optiuni,
-          stoc_idx: stocIdx,
+        // FIFO split: o linie de factura per intrare de stoc cu pret diferit
+        const splits: RandFactura[] = []
+        let remaining = p.cantitate ?? 1
+
+        for (let i = 0; i < optiuni.length && remaining > 0; i++) {
+          const opt = optiuni[i]
+          const qty = Math.min(remaining, opt.cantitate)
+          splits.push({
+            _key: Math.random().toString(36).slice(2),
+            produs_id: p.produs_id ?? null,
+            stoc_id: opt.id,
+            nume_produs: p.nume_produs ?? '',
+            cod: p.cod ?? '',
+            producator: p.producator ?? '',
+            unitate: p.unitate ?? 'buc',
+            cantitate: qty,
+            pret_achizitie: opt.pret_achizitie,
+            pret_vanzare: p.pret_vanzare ?? 0,
+            stoc_disponibil: totalDisponibil,
+            stoc_optiuni: optiuni,
+            stoc_idx: i,
+          })
+          remaining -= qty
         }
-      }))
+
+        // Fallback daca stocul nu acopera cantitatea (sau nu exista stoc)
+        if (splits.length === 0 || remaining > 0) {
+          splits.push({
+            _key: Math.random().toString(36).slice(2),
+            produs_id: p.produs_id ?? null,
+            stoc_id: p.stoc_id ?? null,
+            nume_produs: p.nume_produs ?? '',
+            cod: p.cod ?? '',
+            producator: p.producator ?? '',
+            unitate: p.unitate ?? 'buc',
+            cantitate: remaining > 0 ? remaining : (p.cantitate ?? 1),
+            pret_achizitie: p.pret_achizitie ?? 0,
+            pret_vanzare: p.pret_vanzare ?? 0,
+            stoc_disponibil: totalDisponibil,
+            stoc_optiuni: optiuni,
+            stoc_idx: 0,
+          })
+        }
+
+        return splits
+      }))).flat()
 
       setRanduri(randuriFilled)
       setView('nou')
@@ -322,7 +348,7 @@ function FacturarePageInner() {
         .in('oferta_id', ids)
       if (!opRows?.length) { setView('nou'); return }
 
-      const randuriFilled: RandFactura[] = await Promise.all(opRows.map(async (p) => {
+      const randuriFilled: RandFactura[] = (await Promise.all(opRows.map(async (p): Promise<RandFactura[]> => {
         const orParts: string[] = []
         if (p.produs_id) orParts.push(`produs_id.eq.${p.produs_id}`)
         if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
@@ -337,26 +363,53 @@ function FacturarePageInner() {
         }
 
         const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
-        const idxInOptiuni = p.stoc_id ? optiuni.findIndex(o => o.id === p.stoc_id) : 0
-        const stocIdx = idxInOptiuni >= 0 ? idxInOptiuni : 0
-        const optSelec = optiuni[stocIdx]
 
-        return {
-          _key: Math.random().toString(36).slice(2),
-          produs_id: p.produs_id ?? null,
-          stoc_id: optSelec?.id ?? p.stoc_id ?? null,
-          nume_produs: p.nume_produs ?? '',
-          cod: p.cod ?? '',
-          producator: p.producator ?? '',
-          unitate: p.unitate ?? 'buc',
-          cantitate: p.cantitate ?? 1,
-          pret_achizitie: optSelec?.pret_achizitie ?? p.pret_achizitie ?? 0,
-          pret_vanzare: p.pret_vanzare ?? 0,
-          stoc_disponibil: totalDisponibil,
-          stoc_optiuni: optiuni,
-          stoc_idx: stocIdx,
+        // FIFO split: o linie de factura per intrare de stoc cu pret diferit
+        const splits: RandFactura[] = []
+        let remaining = p.cantitate ?? 1
+
+        for (let i = 0; i < optiuni.length && remaining > 0; i++) {
+          const opt = optiuni[i]
+          const qty = Math.min(remaining, opt.cantitate)
+          splits.push({
+            _key: Math.random().toString(36).slice(2),
+            produs_id: p.produs_id ?? null,
+            stoc_id: opt.id,
+            nume_produs: p.nume_produs ?? '',
+            cod: p.cod ?? '',
+            producator: p.producator ?? '',
+            unitate: p.unitate ?? 'buc',
+            cantitate: qty,
+            pret_achizitie: opt.pret_achizitie,
+            pret_vanzare: p.pret_vanzare ?? 0,
+            stoc_disponibil: totalDisponibil,
+            stoc_optiuni: optiuni,
+            stoc_idx: i,
+          })
+          remaining -= qty
         }
-      }))
+
+        // Fallback daca stocul nu acopera cantitatea (sau nu exista stoc)
+        if (splits.length === 0 || remaining > 0) {
+          splits.push({
+            _key: Math.random().toString(36).slice(2),
+            produs_id: p.produs_id ?? null,
+            stoc_id: p.stoc_id ?? null,
+            nume_produs: p.nume_produs ?? '',
+            cod: p.cod ?? '',
+            producator: p.producator ?? '',
+            unitate: p.unitate ?? 'buc',
+            cantitate: remaining > 0 ? remaining : (p.cantitate ?? 1),
+            pret_achizitie: p.pret_achizitie ?? 0,
+            pret_vanzare: p.pret_vanzare ?? 0,
+            stoc_disponibil: totalDisponibil,
+            stoc_optiuni: optiuni,
+            stoc_idx: 0,
+          })
+        }
+
+        return splits
+      }))).flat()
 
       setRanduri(randuriFilled)
       setView('nou')

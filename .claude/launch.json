@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "av-auto-app",
-      "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": ["/tmp/start-av-auto.sh"],
+      "name": "av-auto-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "port": 3000
     }
   ]
