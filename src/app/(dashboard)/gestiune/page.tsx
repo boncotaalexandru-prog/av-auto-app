@@ -48,6 +48,7 @@ interface NirProdusForm {
   cantitate: number
   unitate: string
   pret_achizitie: number
+  stoc_curent: number | null
 }
 
 interface ImportStocRow {
@@ -86,6 +87,7 @@ function emptyProdus(): NirProdusForm {
     cantitate: 1,
     unitate: 'buc',
     pret_achizitie: 0,
+    stoc_curent: null,
   }
 }
 
@@ -271,14 +273,22 @@ export default function GestiunePage() {
     setModalProdusNouKey(null)
   }
 
-  function selectProdusNir(key: string, p: ProdusSearch) {
+  async function selectProdusNir(key: string, p: ProdusSearch) {
     setNirProduse(prev => prev.map(r => r._key === key ? {
       ...r, produs_id: p.id, produs_cod: p.cod ?? '', produs_nume: p.nume,
       producator: p.producator ?? '', unitate: p.unitate ?? 'buc',
-      pret_achizitie: p.pret ?? 0,
+      pret_achizitie: p.pret ?? 0, stoc_curent: null,
     } : r))
     setProdSearchMap(m => ({ ...m, [key]: p.nume }))
     setShowProdMap(m => ({ ...m, [key]: false }))
+
+    // Fetch stoc tintit pentru produsul selectat (evita limita de 1000 randuri din lista globala)
+    const orParts: string[] = [`produs_id.eq.${p.id}`]
+    if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
+    const { data: stocRows } = await createClient().from('stoc')
+      .select('cantitate').or(orParts.join(','))
+    const total = (stocRows ?? []).reduce((s, r) => s + (r.cantitate ?? 0), 0)
+    setNirProduse(prev => prev.map(r => r._key === key ? { ...r, stoc_curent: total } : r))
   }
 
   // ─── Salvare NIR ──────────────────────────────────────────────────────────
@@ -488,6 +498,7 @@ export default function GestiunePage() {
       cantitate: p.cantitate ?? 0,
       unitate: p.unitate ?? 'buc',
       pret_achizitie: p.pret_achizitie ?? 0,
+      stoc_curent: null,
     }))
 
     // 2. Scade cantitățile din stoc
@@ -540,6 +551,7 @@ export default function GestiunePage() {
       cantitate: p.cantitate ?? 1,
       unitate: p.unitate ?? 'buc',
       pret_achizitie: p.pret_achizitie ?? 0,
+      stoc_curent: null,
     }))
 
     const searchMap: Record<string, string> = {}
@@ -1036,10 +1048,12 @@ export default function GestiunePage() {
                               />
                             )}
                             {rand.produs_id && (() => {
-                              const stocCant = stoc.filter(s => s.produs_id === rand.produs_id || (rand.produs_cod && s.produs_cod === rand.produs_cod)).reduce((sum, s) => sum + s.cantitate, 0)
+                              const stocCant = rand.stoc_curent !== null
+                                ? rand.stoc_curent
+                                : stoc.filter(s => s.produs_id === rand.produs_id || (rand.produs_cod && s.produs_cod === rand.produs_cod)).reduce((sum, s) => sum + s.cantitate, 0)
                               return (
                                 <p className={`text-xs mt-0.5 font-medium ${stocCant > 0 ? 'text-green-600' : 'text-orange-500'}`}>
-                                  Stoc curent: {stocCant} {rand.unitate || 'buc'}
+                                  {rand.stoc_curent === null ? 'Stoc curent: ...' : `Stoc curent: ${stocCant} ${rand.unitate || 'buc'}`}
                                 </p>
                               )
                             })()}
