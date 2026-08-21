@@ -8,7 +8,31 @@ import { createClient } from '@/lib/supabase/client'
 
 interface ClientOpt { id: string; denumire: string }
 interface ProdusSearch { id: string; cod: string | null; nume: string; unitate: string | null; producator: string | null }
-interface StocOptiune { id: string; pret_achizitie: number; pret_lista: number | null; cantitate: number; furnizor_nume: string | null }
+interface StocOptiune { id: string; pret_achizitie: number; pret_lista: number | null; cantitate: number; furnizor_nume: string | null; updated_at?: string }
+
+// Fetch stoc fara .or() — evita probleme cu caractere speciale in cod (virgula, slash, plus)
+async function fetchStocForProduct(
+  supabase: ReturnType<typeof createClient>,
+  produsId: string | null | undefined,
+  cod: string | null | undefined
+): Promise<StocOptiune[]> {
+  const map = new Map<string, StocOptiune>()
+  if (produsId) {
+    const { data } = await supabase.from('stoc')
+      .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume, updated_at')
+      .gt('cantitate', 0).eq('produs_id', produsId)
+    for (const r of data ?? []) map.set(r.id, r as StocOptiune)
+  }
+  if (cod) {
+    const { data } = await supabase.from('stoc')
+      .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume, updated_at')
+      .gt('cantitate', 0).eq('produs_cod', cod)
+    for (const r of data ?? []) map.set(r.id, r as StocOptiune)
+  }
+  return [...map.values()].sort((a, b) =>
+    new Date(a.updated_at ?? 0).getTime() - new Date(b.updated_at ?? 0).getTime()
+  )
+}
 
 interface RandFactura {
   _key: string
@@ -246,19 +270,7 @@ function FacturarePageInner() {
       if (!opRows?.length) { setView('nou'); return }
 
       const randuriFilled: RandFactura[] = (await Promise.all(opRows.map(async (p): Promise<RandFactura[]> => {
-        // Cauta optiunile din stoc pentru acest produs (FIFO: cel mai vechi first)
-        const orParts: string[] = []
-        if (p.produs_id) orParts.push(`produs_id.eq.${p.produs_id}`)
-        if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
-
-        let optiuni: StocOptiune[] = []
-        if (orParts.length > 0) {
-          const { data: stocRows } = await supabase.from('stoc')
-            .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume')
-            .gt('cantitate', 0).or(orParts.join(','))
-            .order('updated_at', { ascending: true })
-          optiuni = (stocRows ?? []) as StocOptiune[]
-        }
+        const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod)
 
         const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
 
@@ -349,18 +361,7 @@ function FacturarePageInner() {
       if (!opRows?.length) { setView('nou'); return }
 
       const randuriFilled: RandFactura[] = (await Promise.all(opRows.map(async (p): Promise<RandFactura[]> => {
-        const orParts: string[] = []
-        if (p.produs_id) orParts.push(`produs_id.eq.${p.produs_id}`)
-        if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
-
-        let optiuni: StocOptiune[] = []
-        if (orParts.length > 0) {
-          const { data: stocRows } = await supabase.from('stoc')
-            .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume')
-            .gt('cantitate', 0).or(orParts.join(','))
-            .order('updated_at', { ascending: true })
-          optiuni = (stocRows ?? []) as StocOptiune[]
-        }
+        const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod)
 
         const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
 
@@ -507,13 +508,7 @@ function FacturarePageInner() {
     setPretSpecial(null)
 
     const supabase = createClient()
-    const orParts: string[] = [`produs_id.eq.${p.id}`]
-    if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
-
-    const { data: optiuni } = await supabase.from('stoc')
-      .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume')
-      .gt('cantitate', 0).or(orParts.join(','))
-      .order('updated_at', { ascending: true })
+    const optiuni = await fetchStocForProduct(supabase, p.id, p.cod)
 
     // Ultima ofertare — doar pentru clientul curent
     if (clientId) {
@@ -887,17 +882,7 @@ function FacturarePageInner() {
     if (!linii) return
 
     const randuriFilled: RandFactura[] = await Promise.all(linii.map(async (p) => {
-      const orParts: string[] = []
-      if (p.produs_id) orParts.push(`produs_id.eq.${p.produs_id}`)
-      if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
-      let optiuni: StocOptiune[] = []
-      if (orParts.length > 0) {
-        const { data: stocRows } = await supabase.from('stoc')
-          .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume')
-          .gt('cantitate', 0).or(orParts.join(','))
-          .order('updated_at', { ascending: true })
-        optiuni = (stocRows ?? []) as StocOptiune[]
-      }
+      const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod)
       const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
       const idxInOptiuni = p.stoc_id ? optiuni.findIndex(o => o.id === p.stoc_id) : 0
       const stocIdx = idxInOptiuni >= 0 ? idxInOptiuni : 0
