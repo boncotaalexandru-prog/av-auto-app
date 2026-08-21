@@ -81,7 +81,9 @@ export default function ProdusDetaliuPage() {
     const NIR_SEL = 'id, created_at, cantitate, pret_achizitie, nir(id, numar, data_intrare, furnizor_nume)'
     const OF_SEL  = 'id, created_at, cantitate, pret_vanzare, oferte(id, numar, clienti(denumire))'
     // Facturi: fără join anidat — mai sigur, exact ca rapoarte
-    const FP_SEL  = 'id, factura_id, created_at, cantitate, pret_vanzare, pret_achizitie'
+    // NB: facturi_produse nu are coloana created_at — cerand-o, PostgREST intoarce
+    // eroare 42703 si TOATE randurile de factura dispar din feed. Data vine din facturi.data_emitere.
+    const FP_SEL  = 'id, factura_id, cantitate, pret_vanzare, pret_achizitie'
 
     // ── Pasul 1: stoc curent + TOATE ID-urile stoc (inclusiv loturi vândute) ──
     const [stocRes, stocAllRes] = await Promise.all([
@@ -188,7 +190,7 @@ export default function ProdusDetaliuPage() {
       events.push({
         _key: `factura-${fp.id}`,
         tip: isStorno ? 'storno' : 'factura',
-        timestamp: fp.created_at ?? f?.data_emitere ?? '',
+        timestamp: f?.data_emitere ?? '',
         numar: f?.numar,
         entitate: f?.client ?? undefined,
         cantitate: Math.abs(fp.cantitate),
