@@ -6,8 +6,10 @@ import { createClient } from '@/lib/supabase/client'
 interface Ridicare {
   id: string
   oferta_id: string | null
+  oferta_produs_id: string | null
   client_nume: string | null
   nume_produs: string
+  cod: string | null
   producator: string | null
   cantitate: number
   unitate: string | null
@@ -104,7 +106,22 @@ export default function MarfaDeRidicatPage() {
     if (!includeRidicate) q = q.eq('ridicat', false)
     const { data, error } = await q
     if (error) console.error('[Ridicari] Eroare query:', error)
-    setRidicari((data as Ridicare[]) ?? [])
+    const randuri = (data as Ridicare[]) ?? []
+
+    // Codul produsului nu e salvat pe ridicare — il luam din oferta
+    const opIds = [...new Set(randuri.map(r => r.oferta_produs_id).filter(Boolean))] as string[]
+    if (opIds.length) {
+      const { data: coduri } = await createClient()
+        .from('oferte_produse')
+        .select('id, cod')
+        .in('id', opIds)
+      const map = new Map((coduri as { id: string; cod: string | null }[] ?? []).map(c => [c.id, c.cod]))
+      for (const r of randuri) {
+        if (!r.cod && r.oferta_produs_id) r.cod = map.get(r.oferta_produs_id) ?? null
+      }
+    }
+
+    setRidicari(randuri)
     setLoading(false)
   }
 
@@ -259,6 +276,11 @@ export default function MarfaDeRidicatPage() {
                           />
                           <div className="flex-1 min-w-0">
                             <p className={`font-medium text-sm ${item.ridicat ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                              {item.cod && (
+                                <span className={`font-mono text-xs px-1.5 py-0.5 rounded mr-2 ${item.ridicat ? 'bg-gray-100 text-gray-400' : 'bg-gray-100 text-gray-900'}`}>
+                                  {item.cod}
+                                </span>
+                              )}
                               {item.nume_produs}
                             </p>
                             <p className="text-xs text-gray-600 mt-0.5">
