@@ -564,7 +564,6 @@ export default function OfertaPage() {
     // Construieste randurile editabile
     const randuri: ConfirmaRand[] = produse.map(p => {
       const furnNume = (p as unknown as { furnizori: { denumire: string } | null }).furnizori?.denumire ?? ''
-      const isStocPropriu = !p.furnizor_id
       return {
         oferta_produs_id: p.id,
         nume_produs: p.nume_produs,
@@ -576,7 +575,8 @@ export default function OfertaPage() {
         furnizor_nume: furnNume,
         ora_ridicare: (p as unknown as { ora_ridicare: string | null }).ora_ridicare ?? '',
         data_livrare: (p as unknown as { data_livrare: string | null }).data_livrare ?? '',
-        include: !isStocPropriu,
+        // Toate piesele vin bifate (si cele din stoc) — nebifat = clientul n-a confirmat piesa → confirmare partiala
+        include: true,
       }
     })
     setConfirmaRanduri(randuri)
@@ -1092,7 +1092,7 @@ export default function OfertaPage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">Confirmă Oferta</h3>
-                <p className="text-sm text-gray-600 mt-0.5">Verifică și ajustează ridicările înainte de confirmare</p>
+                <p className="text-sm text-gray-900 mt-0.5">Debifează doar piesele pe care clientul nu le-a confirmat — ele rămân pe oferta veche.</p>
               </div>
               <button onClick={() => setModalConfirma(false)} className="text-gray-600 hover:text-gray-900 text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100">✕</button>
             </div>
