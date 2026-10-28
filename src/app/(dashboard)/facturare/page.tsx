@@ -7,35 +7,39 @@ import { filtreCod } from '@/lib/cautareCod'
 import { numarFactura } from '@/lib/numarFactura'
 import { emiteFactura as emiteFacturaOblio, emiteStorno as emiteStornoOblio } from '@/lib/emitereOblio'
 import { legaOferteDeFactura, elibereazaOferte } from '@/lib/oferteFactura'
+import { incarcaRezervari, cuDisponibil, type Rezervare } from '@/lib/rezervari'
 
 // ─── Tipuri ─────────────────────────────────────────────────────────────────
 
 interface ClientOpt { id: string; denumire: string }
 interface ProdusSearch { id: string; cod: string | null; nume: string; unitate: string | null; producator: string | null }
-interface StocOptiune { id: string; pret_achizitie: number; pret_lista: number | null; cantitate: number; furnizor_nume: string | null; updated_at?: string }
+// cantitate = disponibil (stoc fizic − rezervat de alte facturi nefinalizate / piese livrate nefacturate)
+interface StocOptiune { id: string; produs_id: string | null; produs_cod: string | null; pret_achizitie: number; pret_lista: number | null; cantitate: number; furnizor_nume: string | null; updated_at?: string }
 
 // Fetch stoc fara .or() — evita probleme cu caractere speciale in cod (virgula, slash, plus)
+// Intrarile rezervate integral dispar din lista.
 async function fetchStocForProduct(
   supabase: ReturnType<typeof createClient>,
   produsId: string | null | undefined,
-  cod: string | null | undefined
+  cod: string | null | undefined,
+  rezervari: Rezervare[] = [],
 ): Promise<StocOptiune[]> {
   const map = new Map<string, StocOptiune>()
   if (produsId) {
     const { data } = await supabase.from('stoc')
-      .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume, updated_at')
+      .select('id, produs_id, produs_cod, pret_achizitie, pret_lista, cantitate, furnizor_nume, updated_at')
       .gt('cantitate', 0).eq('produs_id', produsId)
     for (const r of data ?? []) map.set(r.id, r as StocOptiune)
   }
   if (cod) {
     const { data } = await supabase.from('stoc')
-      .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume, updated_at')
+      .select('id, produs_id, produs_cod, pret_achizitie, pret_lista, cantitate, furnizor_nume, updated_at')
       .gt('cantitate', 0).eq('produs_cod', cod)
     for (const r of data ?? []) map.set(r.id, r as StocOptiune)
   }
-  return [...map.values()].sort((a, b) =>
-    new Date(a.updated_at ?? 0).getTime() - new Date(b.updated_at ?? 0).getTime()
-  )
+  return cuDisponibil([...map.values()], rezervari)
+    .filter(o => o.cantitate > 0)
+    .sort((a, b) => new Date(a.updated_at ?? 0).getTime() - new Date(b.updated_at ?? 0).getTime())
 }
 
 interface RandFactura {
@@ -264,8 +268,10 @@ function FacturarePageInner() {
         .in('oferta_id', ids)
       if (!opRows?.length) { setView('nou'); return }
 
+      // Piesele livrate din ofertele astea nu-si blocheaza singure stocul
+      const rezervari = await incarcaRezervari(supabase, { oferte: ids })
       const randuriFilled: RandFactura[] = (await Promise.all(opRows.map(async (p): Promise<RandFactura[]> => {
-        const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod)
+        const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod, rezervari)
 
         const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
 
@@ -414,7 +420,8 @@ function FacturarePageInner() {
     setPretSpecial(null)
 
     const supabase = createClient()
-    const optiuni = await fetchStocForProduct(supabase, p.id, p.cod)
+    const rezervari = await incarcaRezervari(supabase, { factura: editFacturaId, oferte: oferteSursa })
+    const optiuni = await fetchStocForProduct(supabase, p.id, p.cod, rezervari)
 
     // Ultima ofertare — doar pentru clientul curent
     if (clientId) {
@@ -503,13 +510,24 @@ function FacturarePageInner() {
     if (randuri.length === 0) return
     const supabase = createClient()
     const lipsa: string[] = []
+    // Recalculat acum — intre timp altcineva poate fi scos marfa sau bifat-o livrata
+    const rezervari = await incarcaRezervari(supabase, { factura: editFacturaId, oferte: oferteSursa })
+    const disponibilPeIntrare = new Map<string, number>()
+    const necesarPeIntrare = new Map<string, { nume: string; cantitate: number }>()
     for (const r of randuri) {
+      const optiuni = await fetchStocForProduct(supabase, r.produs_id, r.cod, rezervari)
+      for (const o of optiuni) disponibilPeIntrare.set(o.id, o.cantitate)
       if (r.stoc_id) {
-        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', r.stoc_id).single()
-        if (!s || s.cantitate < r.cantitate) lipsa.push(`${r.nume_produs} (disponibil: ${s?.cantitate ?? 0}, necesar: ${r.cantitate})`)
+        const n = necesarPeIntrare.get(r.stoc_id) ?? { nume: r.nume_produs, cantitate: 0 }
+        necesarPeIntrare.set(r.stoc_id, { ...n, cantitate: n.cantitate + r.cantitate })
         continue
       }
-      if (r.stoc_disponibil < r.cantitate) lipsa.push(`${r.nume_produs} (disponibil: ${r.stoc_disponibil}, necesar: ${r.cantitate})`)
+      const total = optiuni.reduce((s, o) => s + o.cantitate, 0)
+      if (total < r.cantitate) lipsa.push(`${r.nume_produs} (disponibil: ${total}, necesar: ${r.cantitate})`)
+    }
+    for (const [stocId, n] of necesarPeIntrare) {
+      const disp = disponibilPeIntrare.get(stocId) ?? 0
+      if (disp < n.cantitate) lipsa.push(`${n.nume} (disponibil: ${disp}, necesar: ${n.cantitate})`)
     }
     if (lipsa.length > 0) { setWarningItems(lipsa); setModalWarning(true); return }
     await executaFacturare()
@@ -671,8 +689,9 @@ function FacturarePageInner() {
     const { data: oferteLegate } = await supabase.from('oferte').select('id').eq('factura_id', facturaId)
     setOferteSursa((oferteLegate ?? []).map(o => o.id))
 
+    const rezervari = await incarcaRezervari(supabase, { factura: facturaId })
     const randuriFilled: RandFactura[] = await Promise.all(linii.map(async (p) => {
-      const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod)
+      const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod, rezervari)
       const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
       const idxInOptiuni = p.stoc_id ? optiuni.findIndex(o => o.id === p.stoc_id) : 0
       const stocIdx = idxInOptiuni >= 0 ? idxInOptiuni : 0

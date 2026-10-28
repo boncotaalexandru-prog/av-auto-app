@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { incarcaRezervari, incarcaStoc, cuDisponibil } from '@/lib/rezervari'
 import { filtreCod } from '@/lib/cautareCod'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
 
@@ -57,12 +58,11 @@ export default function EchivalentePage() {
     // Stoc
     const ids = produse.map(p => p.id)
     const cods = produse.filter(p => p.cod).map(p => p.cod as string)
-    const orParts = [`produs_id.in.(${ids.join(',')})`]
-    if (cods.length) orParts.push(`produs_cod.in.(${cods.join(',')})`)
-    const { data: stocData } = await supabase.from('stoc')
-      .select('produs_id, produs_cod, cantitate').or(orParts.join(','))
+    // Stoc disponibil = fizic − rezervat (facturi nefinalizate, piese livrate nefacturate)
+    const [stocFizic, rezervari] = await Promise.all([incarcaStoc(supabase, ids, cods), incarcaRezervari(supabase)])
+    const stocData = cuDisponibil(stocFizic, rezervari)
     const stocMap: Record<string, number> = {}
-    for (const row of stocData ?? []) {
+    for (const row of stocData) {
       const key = row.produs_id ?? row.produs_cod ?? ''
       if (key) stocMap[key] = (stocMap[key] ?? 0) + row.cantitate
     }

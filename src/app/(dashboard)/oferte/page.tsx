@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { incarcaRezervari, incarcaStoc, cuDisponibil } from '@/lib/rezervari'
 import OfertaNoua from '@/components/oferte/OfertaNoua'
 
 interface Oferta {
@@ -112,25 +113,12 @@ export default function OferteP() {
       setOferteLivrate(new Set((produse ?? []).filter(p => p.livrat_la).map(p => p.oferta_id)))
       if (!produse?.length) { setOfertePregate(new Set()); return }
 
-      const toateProdusIds = [...new Set(produse.filter(p => p.produs_id).map(p => p.produs_id as string))]
-      const toateCoduri = [...new Set(produse.filter(p => !p.produs_id && p.cod).map(p => p.cod as string))]
-
-      const orParts: string[] = []
-      if (toateProdusIds.length) orParts.push(`produs_id.in.(${toateProdusIds.join(',')})`)
-      if (toateCoduri.length) orParts.push(`produs_cod.in.(${toateCoduri.join(',')})`)
-      if (!orParts.length) { setOfertePregate(new Set()); return }
-
-      const { data: stocRows } = await supabase
-        .from('stoc')
-        .select('produs_id, produs_cod, cantitate')
-        .or(orParts.join(','))
-
-      const stocMap: Record<string, number> = {}
-      for (const row of stocRows ?? []) {
-        const qty = row.cantitate ?? 0
-        if (row.produs_id)  stocMap[row.produs_id]  = (stocMap[row.produs_id]  ?? 0) + qty
-        if (row.produs_cod) stocMap[row.produs_cod] = (stocMap[row.produs_cod] ?? 0) + qty
-      }
+      // Stocul cautat si dupa cod pentru toate liniile (si stocul importat fara produs in catalog),
+      // fara .or() scris de mana — codurile cu virgula/paranteze stricau tot filtrul
+      const [stocRows, rezervari] = await Promise.all([
+        incarcaStoc(supabase, produse.map(p => p.produs_id as string), produse.map(p => p.cod as string)),
+        incarcaRezervari(supabase),
+      ])
 
       const pregatite = new Set<string>()
       const perOferta: Record<string, typeof produse> = {}
@@ -139,7 +127,14 @@ export default function OferteP() {
         perOferta[p.oferta_id].push(p)
       }
       for (const [ofertaId, linii] of Object.entries(perOferta)) {
+        // Disponibil pentru oferta asta = stoc − ce au rezervat ALTE oferte/facturi
+        const stocMap: Record<string, number> = {}
+        for (const row of cuDisponibil(stocRows, rezervari.filter(r => r.sursa_id !== ofertaId))) {
+          if (row.produs_id)  stocMap[row.produs_id]  = (stocMap[row.produs_id]  ?? 0) + row.cantitate
+          if (row.produs_cod) stocMap[row.produs_cod] = (stocMap[row.produs_cod] ?? 0) + row.cantitate
+        }
         const toateAcoperite = linii.every(linie => {
+          if (linie.livrat_la) return true // piesa e deja la client
           const qty = linie.cantitate ?? 1
           const acoperitPrinId  = linie.produs_id && (stocMap[linie.produs_id] ?? 0) >= qty
           const acoperitPrinCod = linie.cod       && (stocMap[linie.cod]       ?? 0) >= qty

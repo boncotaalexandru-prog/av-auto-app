@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { filtreCod } from '@/lib/cautareCod'
+import { incarcaRezervari, incarcaStoc, cuDisponibil } from '@/lib/rezervari'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
 import EchivalentePopover from '@/components/produse/EchivalentePopover'
 
@@ -235,12 +236,10 @@ export default function OfertaPage() {
         setProdResults([...prodList, ...stocExtra])
         const ids = prodList.map(p => p.id)
         const cods = [...prodList, ...stocExtra].filter(p => p.cod).map(p => p.cod as string)
-        const orParts = [`produs_id.in.(${ids.join(',')})`]
-        if (cods.length) orParts.push(`produs_cod.in.(${cods.join(',')})`)
-        const { data: stocData } = await supabase.from('stoc')
-          .select('produs_id, produs_cod, cantitate').or(orParts.join(','))
+        // Stoc disponibil = fizic − rezervat (facturi nefinalizate, piese livrate nefacturate)
+        const [stocData, rezervari] = await Promise.all([incarcaStoc(supabase, ids, cods), incarcaRezervari(supabase)])
         const map: Record<string, number> = {}
-        for (const row of stocData ?? []) {
+        for (const row of cuDisponibil(stocData, rezervari)) {
           const key = row.produs_id ?? row.produs_cod ?? ''
           if (key) map[key] = (map[key] ?? 0) + row.cantitate
         }
@@ -317,15 +316,14 @@ export default function OfertaPage() {
     }
 
     // Cauta in stoc strict dupa codul produsului selectat (nu ilike pe nume — ar prinde produse similare)
-    const orParts: string[] = [`produs_id.eq.${p.id}`]
-    if (p.cod) orParts.push(`produs_cod.eq.${p.cod}`)
-
-    const { data: optiuni } = await supabase
-      .from('stoc')
-      .select('id, pret_achizitie, pret_lista, cantitate, furnizor_nume, updated_at')
-      .gt('cantitate', 0)
-      .or(orParts.join(','))
-      .order('updated_at', { ascending: false })
+    // cantitate = disponibil; intrarile rezervate integral dispar
+    const [stocProdus, rezervari] = await Promise.all([
+      incarcaStoc(supabase, [p.id], p.cod ? [p.cod] : []),
+      incarcaRezervari(supabase),
+    ])
+    const optiuni = cuDisponibil(stocProdus, rezervari)
+      .filter(o => o.cantitate > 0)
+      .sort((a, b) => new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime())
 
     // Pret special pentru clientul ofertei
     if (oferta?.client_id) {
@@ -337,7 +335,7 @@ export default function OfertaPage() {
       if (pretRows && pretRows.length > 0) setPretSpecialClient(pretRows[0].pret_vanzare)
     }
 
-    const lista = (optiuni ?? []) as StocOptiune[]
+    const lista = optiuni as StocOptiune[]
     setStocOptiuni(lista)
     setStocOptiuneIdx(0)
 
@@ -376,12 +374,9 @@ export default function OfertaPage() {
       if (echivData?.length) {
         const ids = echivData.map(e => e.id)
         const cods = echivData.filter(e => e.cod).map(e => e.cod as string)
-        const orP = [`produs_id.in.(${ids.join(',')})`]
-        if (cods.length) orP.push(`produs_cod.in.(${cods.join(',')})`)
-        const { data: stocData } = await supabase.from('stoc')
-          .select('produs_id, produs_cod, cantitate').or(orP.join(','))
+        const stocData = cuDisponibil(await incarcaStoc(supabase, ids, cods), rezervari)
         const sm: Record<string, number> = {}
-        for (const s of stocData ?? []) {
+        for (const s of stocData) {
           const k = s.produs_id ?? s.produs_cod ?? ''; if (k) sm[k] = (sm[k] ?? 0) + s.cantitate
         }
         setModalEchivalente(echivData.map(e => ({ ...e, stoc: sm[e.id] ?? (e.cod ? (sm[e.cod] ?? 0) : 0) })))

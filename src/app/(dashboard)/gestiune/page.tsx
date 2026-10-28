@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { filtreCod, produseCuAcelasiCod } from '@/lib/cautareCod'
+import { incarcaRezervari, alocaRezervari, type Rezervare } from '@/lib/rezervari'
 import { read, utils } from 'xlsx'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
 
@@ -114,8 +115,8 @@ export default function GestiunePage() {
   const [cautareStoc, setCautareStoc] = useState('')
   const [stocCautat, setStocCautat] = useState<StocItem[] | null>(null)
   const [cautandStoc, setCautandStoc] = useState(false)
-  // Rezervari: stoc_id (sau `cod:X`) → lista clienti care au produs in factura nefinalizata
-  const [rezervari, setRezervari] = useState<Record<string, { client: string; cantitate: number }[]>>({})
+  // Rezervari: facturi nefinalizate + piese livrate nefacturate (scad din disponibil, nu din stocul fizic)
+  const [rezervari, setRezervari] = useState<Rezervare[]>([])
 
   // NIR list
   const [nirList, setNirList] = useState<NirRow[]>([])
@@ -194,34 +195,7 @@ export default function GestiunePage() {
     const { data } = await supabase.from('stoc').select('*').order('produs_nume')
     setStoc((data as StocItem[]) ?? [])
 
-    // Incarca rezervarile: produse din facturi nefinalizate
-    const { data: nefinalizate } = await supabase
-      .from('facturi')
-      .select('id, clienti(denumire)')
-      .eq('status', 'nefinalizata')
-
-    if (nefinalizate && nefinalizate.length > 0) {
-      const clientMap: Record<string, string> = {}
-      for (const f of nefinalizate) {
-        const c = Array.isArray(f.clienti) ? f.clienti[0] : (f.clienti as { denumire: string } | null)
-        clientMap[f.id] = c?.denumire ?? '(necunoscut)'
-      }
-      const ids = nefinalizate.map(f => f.id)
-      const { data: fp } = await supabase
-        .from('facturi_produse')
-        .select('stoc_id, cod, cantitate, factura_id')
-        .in('factura_id', ids)
-
-      const map: Record<string, { client: string; cantitate: number }[]> = {}
-      for (const p of (fp ?? [])) {
-        const key = p.stoc_id ?? `cod:${p.cod ?? ''}`
-        if (!map[key]) map[key] = []
-        map[key].push({ client: clientMap[p.factura_id] ?? '?', cantitate: p.cantitate ?? 1 })
-      }
-      setRezervari(map)
-    } else {
-      setRezervari({})
-    }
+    setRezervari(await incarcaRezervari(supabase))
 
     setLoadingStoc(false)
   }
@@ -689,6 +663,7 @@ export default function GestiunePage() {
   const stocFiltrat = cautareStoc.trim()
     ? (stocCautat ?? [])
     : stoc.filter(s => s.cantitate > 0)
+  const alocari = alocaRezervari(stocFiltrat, rezervari)
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -764,16 +739,25 @@ export default function GestiunePage() {
                   <tr key={s.id} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-2.5 font-medium text-gray-900">
                       <div>{s.produs_nume}</div>
-                      {(rezervari[s.id] ?? rezervari[`cod:${s.produs_cod ?? ''}`] ?? []).map((r, i) => (
-                        <span key={i} className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-                          🔒 REZERVAT {r.cantitate} buc — {r.client}
+                      {(alocari.get(s.id)?.rezervari ?? []).map((r, i) => (
+                        <span key={i} className={`inline-flex items-center gap-1 mt-0.5 mr-1 px-1.5 py-0.5 rounded text-xs font-semibold border ${
+                          r.tip === 'livrat' ? 'bg-orange-100 text-orange-900 border-orange-300' : 'bg-amber-100 text-amber-900 border-amber-200'
+                        }`}>
+                          {r.tip === 'livrat' ? '📦 LIVRAT NEFACTURAT' : '🔒 REZERVAT'} {r.cantitate} buc — {r.eticheta}
                         </span>
                       ))}
                     </td>
                     <td className="px-4 py-2.5 text-gray-900">{s.producator || '—'}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-900">{s.produs_cod || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-900">{s.unitate || 'buc'}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{s.cantitate}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-gray-900">
+                      {s.cantitate}
+                      {(alocari.get(s.id)?.rezervat ?? 0) > 0 && (
+                        <div className="text-xs font-semibold text-orange-800 whitespace-nowrap">
+                          disponibil {Math.max(0, s.cantitate - alocari.get(s.id)!.rezervat)}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right text-gray-900">{s.pret_achizitie.toFixed(2)} RON</td>
                     <td className="px-4 py-2.5 text-right font-medium" style={{ color: s.pret_lista ? '#1d4ed8' : '#9ca3af' }}>
                       {s.pret_lista ? s.pret_lista.toFixed(2) + ' RON' : '—'}
