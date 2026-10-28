@@ -51,8 +51,8 @@ interface Oferta {
   clienti_masini: { nr_inmatriculare: string | null; marca: string | null; vin: string | null } | null
 }
 
-// livrat_profil = cine a bifat „livrat nefacturat"
-const SELECT_PRODUSE = '*, furnizori(denumire), produse(id, grup_echivalente_id), livrat_profil:profiles!oferte_produse_livrat_de_fkey(full_name)'
+// livrat_profil = cine a bifat „livrat nefacturat"; scos_profil = cine a scos piesa din oferta
+const SELECT_PRODUSE = '*, furnizori(denumire), produse(id, grup_echivalente_id), livrat_profil:profiles!oferte_produse_livrat_de_fkey(full_name), scos_profil:profiles!oferte_produse_scos_de_fkey(full_name)'
 
 interface OfertaProdus {
   id: string
@@ -72,6 +72,9 @@ interface OfertaProdus {
   livrat_la: string | null
   livrat_de: string | null
   livrat_profil: { full_name: string | null } | null
+  scos_la: string | null
+  scos_motiv: string | null
+  scos_profil: { full_name: string | null } | null
 }
 
 interface ProdusSearch { id: string; stoc_id?: string; stoc_pret_lista?: number | null; cod: string | null; nume: string; unitate: string | null; pret: number | null; producator: string | null }
@@ -576,6 +579,36 @@ export default function OfertaPage() {
       : r))
   }
 
+  // Scoate din oferta confirmata (ex. piesa gresita, returnata): piesa ramane vizibila, taiata,
+  // dar nu mai intra in factura, nu mai rezerva stoc si nu mai conteaza la total
+  async function scoateDinOferta(p: OfertaProdus) {
+    if (!eu) return
+    if (produse.filter(r => !r.scos_la).length <= 1) {
+      alert('E ultima piesă din ofertă. Dacă toată oferta nu mai e valabilă, anuleaz-o.')
+      return
+    }
+    const motiv = prompt(`Scoți „${p.nume_produs}" din ofertă.\nMotiv (ex. piesă greșită, returnată):`)
+    if (motiv === null) return
+    const supabase = createClient()
+    const scos_la = new Date().toISOString()
+    const { error } = await supabase.from('oferte_produse')
+      .update({ scos_la, scos_de: eu.id, scos_motiv: motiv.trim() || null }).eq('id', p.id)
+    if (error) { alert('Eroare la salvare: ' + error.message); return }
+    // Ridicarea de la furnizor, daca nu s-a facut inca, nu mai are rost
+    await supabase.from('ridicari').delete().eq('oferta_produs_id', p.id).eq('ridicat', false)
+    setProduse(prev => prev.map(r => r.id === p.id
+      ? { ...r, scos_la, scos_motiv: motiv.trim() || null, scos_profil: { full_name: eu.full_name } }
+      : r))
+  }
+
+  async function punInapoiInOferta(p: OfertaProdus) {
+    if (!confirm(`Pui „${p.nume_produs}" înapoi în ofertă?`)) return
+    const { error } = await createClient().from('oferte_produse')
+      .update({ scos_la: null, scos_de: null, scos_motiv: null }).eq('id', p.id)
+    if (error) { alert('Eroare la salvare: ' + error.message); return }
+    setProduse(prev => prev.map(r => r.id === p.id ? { ...r, scos_la: null, scos_motiv: null, scos_profil: null } : r))
+  }
+
   async function stergeRand(randId: string) {
     await createClient().from('oferte_produse').delete().eq('id', randId)
     setProduse(prev => prev.filter(p => p.id !== randId))
@@ -600,7 +633,7 @@ export default function OfertaPage() {
     setTotiIFurnizori(furnizori ?? [])
 
     // Construieste randurile editabile
-    const randuri: ConfirmaRand[] = produse.map(p => {
+    const randuri: ConfirmaRand[] = produse.filter(p => !p.scos_la).map(p => {
       const furnNume = (p as unknown as { furnizori: { denumire: string } | null }).furnizori?.denumire ?? ''
       return {
         oferta_produs_id: p.id,
@@ -758,8 +791,11 @@ export default function OfertaPage() {
 
   const st = STATUS[oferta.status] ?? { label: oferta.status, color: '#6b7280' }
   const masina = oferta.clienti_masini
-  const totalGeneral = produse.reduce((s, p) => s + p.cantitate * p.pret_vanzare, 0)
-  const totalAchizitie = produse.reduce((s, p) => s + p.cantitate * p.pret_achizitie, 0)
+  const produseActive = produse.filter(p => !p.scos_la)
+  const totalGeneral = produseActive.reduce((s, p) => s + p.cantitate * p.pret_vanzare, 0)
+  const totalAchizitie = produseActive.reduce((s, p) => s + p.cantitate * p.pret_achizitie, 0)
+  // Coloana de actiuni: editare in lucru, „Scoate din oferta" pe confirmata
+  const areActiuni = ['in_lucru', 'confirmata'].includes(oferta.status)
   const adaosTotal = totalAchizitie > 0 ? ((totalGeneral - totalAchizitie) / totalAchizitie) * 100 : null
   // Coloana „Livrat" — editabila pe confirmata, doar afisata cat oferta e in facturare
   const arataLivrat = ['confirmata', 'in_facturare'].includes(oferta.status)
@@ -796,7 +832,10 @@ export default function OfertaPage() {
                 )}
                 {['confirmata', 'confirmata_partial', 'finalizata', 'anulata'].includes(oferta.status) && (
                   <button
-                    onClick={() => updateStatus('in_lucru')}
+                    onClick={() => {
+                      if (produseActive.some(p => p.livrat_la) && !confirm('Oferta are piese bifate „Livrat". Cât e în lucru, ele nu mai blochează stocul, iar la reconfirmare bifele nu mai contează.\n\nPentru o singură piesă greșită folosește „Scoate din ofertă".\n\nContinui cu editarea?')) return
+                      updateStatus('in_lucru')
+                    }}
                     disabled={actualizand}
                     className="px-4 py-1.5 text-white text-sm font-bold rounded-lg disabled:opacity-50"
                     style={{ backgroundColor: '#d97706' }}
@@ -910,9 +949,9 @@ export default function OfertaPage() {
                         <input
                           type="checkbox"
                           title="Bifează / debifează toate piesele"
-                          checked={produse.every(p => p.livrat_la)}
+                          checked={produseActive.every(p => p.livrat_la)}
                           onChange={e => marcheazaLivrat(
-                            produse.filter(p => !!p.livrat_la !== e.target.checked).map(p => p.id),
+                            produseActive.filter(p => !!p.livrat_la !== e.target.checked).map(p => p.id),
                             e.target.checked,
                           )}
                           className="w-4 h-4 accent-amber-600 cursor-pointer"
@@ -934,7 +973,7 @@ export default function OfertaPage() {
                 <th className="text-right px-4 py-2.5 text-gray-900 font-medium">Total fără TVA</th>
                 <th className="text-right px-4 py-2.5 text-gray-900 font-medium">TVA 21%</th>
                 <th className="text-right px-4 py-2.5 text-gray-900 font-medium">Total cu TVA</th>
-                {oferta.status === 'in_lucru' && <th className="px-4 py-2.5" />}
+                {areActiuni && <th className="px-4 py-2.5" />}
               </tr>
             </thead>
             <tbody>
@@ -945,14 +984,14 @@ export default function OfertaPage() {
                   </td>
                 </tr>
               ) : produse.map((p, i) => (
-                <tr key={p.id} className={`border-t border-gray-200 ${arataLivrat && p.livrat_la ? 'bg-amber-50' : ''}`}>
+                <tr key={p.id} className={`border-t border-gray-200 ${p.scos_la ? 'bg-gray-100' : arataLivrat && p.livrat_la ? 'bg-amber-50' : ''}`}>
                   <td className="px-2 py-2.5 text-center text-xs text-gray-400 font-medium">{i + 1}</td>
                   {arataLivrat && (
                     <td className="px-2 py-2.5 text-center">
                       <input
                         type="checkbox"
                         checked={!!p.livrat_la}
-                        disabled={oferta.status !== 'confirmata'}
+                        disabled={oferta.status !== 'confirmata' || !!p.scos_la}
                         onChange={e => marcheazaLivrat([p.id], e.target.checked)}
                         className="w-4 h-4 accent-amber-600 cursor-pointer disabled:cursor-not-allowed"
                       />
@@ -966,7 +1005,12 @@ export default function OfertaPage() {
                   )}
                   <td className="px-4 py-2.5 text-gray-900 font-medium">
                     <div className="flex items-center gap-1.5">
-                      <span>{p.nume_produs}</span>
+                      <span className={p.scos_la ? 'line-through' : ''}>{p.nume_produs}</span>
+                      {p.scos_la && (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-xs font-semibold bg-gray-700 text-white whitespace-nowrap">
+                          ✕ scos{p.scos_motiv ? `: ${p.scos_motiv}` : ''} · {new Date(p.scos_la).toLocaleDateString('ro-RO')}{p.scos_profil?.full_name ? ` · ${p.scos_profil.full_name}` : ''}
+                        </span>
+                      )}
                       {(stornatPePiesa[p.id] ?? 0) > 0 && (
                         <span className="px-1.5 py-0.5 rounded text-xs font-semibold text-white whitespace-nowrap" style={{ backgroundColor: '#be185d' }}>
                           ↩ stornat {stornatPePiesa[p.id]}
@@ -1051,6 +1095,19 @@ export default function OfertaPage() {
                       </div>
                     </td>
                   )}
+                  {oferta.status === 'confirmata' && (
+                    <td className="px-4 py-2.5 text-right">
+                      {p.scos_la ? (
+                        <button onClick={() => punInapoiInOferta(p)} className="text-xs text-blue-700 hover:text-blue-900 font-semibold whitespace-nowrap">
+                          ↺ Pune înapoi
+                        </button>
+                      ) : (
+                        <button onClick={() => scoateDinOferta(p)} className="text-xs text-red-700 hover:text-red-900 font-semibold whitespace-nowrap">
+                          ✕ Scoate din ofertă
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -1061,21 +1118,21 @@ export default function OfertaPage() {
                   <td className="px-4 py-1.5 text-right text-gray-800 font-medium">{totalGeneral.toFixed(2)} RON</td>
                   <td />
                   <td />
-                  {oferta.status === 'in_lucru' && <td />}
+                  {areActiuni && <td />}
                 </tr>
                 <tr>
                   <td colSpan={arataLivrat ? 11 : 10} className="px-4 py-1.5 text-right text-xs text-gray-600">TVA 21%:</td>
                   <td />
                   <td className="px-4 py-1.5 text-right text-gray-700">{(totalGeneral * 0.21).toFixed(2)} RON</td>
                   <td />
-                  {oferta.status === 'in_lucru' && <td />}
+                  {areActiuni && <td />}
                 </tr>
                 <tr className="border-t border-gray-300">
                   <td colSpan={arataLivrat ? 11 : 10} className="px-4 py-2.5 text-right font-bold text-gray-900">Total cu TVA:</td>
                   <td />
                   <td />
                   <td className="px-4 py-2.5 text-right font-bold text-gray-900 text-base">{(totalGeneral * 1.21).toFixed(2)} RON</td>
-                  {oferta.status === 'in_lucru' && <td />}
+                  {areActiuni && <td />}
                 </tr>
                 {adaosTotal !== null && (
                   <tr>
@@ -1084,7 +1141,7 @@ export default function OfertaPage() {
                       {adaosTotal >= 0 ? '+' : ''}{adaosTotal.toFixed(1)}%
                       <span className="font-normal text-xs text-gray-500 ml-1">({(totalGeneral - totalAchizitie).toFixed(2)} RON)</span>
                     </td>
-                    {oferta.status === 'in_lucru' && <td />}
+                    {areActiuni && <td />}
                   </tr>
                 )}
               </tfoot>

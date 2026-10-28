@@ -74,6 +74,7 @@ export default function OfertaPreviewPage() {
       supabase.from('oferte_produse')
         .select('id, nume_produs, cod, producator, cantitate, unitate, pret_vanzare')
         .eq('oferta_id', id)
+        .is('scos_la', null)
         .order('created_at'),
       supabase.from('settings').select('*').eq('id', 1).single(),
     ]).then(([{ data: o }, { data: p }, { data: s }]) => {

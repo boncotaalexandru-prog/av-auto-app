@@ -268,6 +268,7 @@ function FacturarePageInner() {
         .from('oferte_produse')
         .select('id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare, produs_id, stoc_id')
         .in('oferta_id', ids)
+        .is('scos_la', null) // piesele scoase din oferta nu se factureaza
       if (!opRows?.length) { setView('nou'); return }
 
       // Piesele livrate din ofertele astea nu-si blocheaza singure stocul

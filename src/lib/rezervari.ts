@@ -40,7 +40,8 @@ export async function incarcaRezervari(
     supabase.from('oferte_produse')
       .select('stoc_id, produs_id, cod, cantitate, oferta_id, oferte!inner(status, numar, clienti(denumire))')
       .eq('oferte.status', 'confirmata')
-      .not('livrat_la', 'is', null),
+      .not('livrat_la', 'is', null)
+      .is('scos_la', null), // piesa scoasa din oferta (ex. returnata) nu mai rezerva
   ])
 
   const rez: Rezervare[] = []

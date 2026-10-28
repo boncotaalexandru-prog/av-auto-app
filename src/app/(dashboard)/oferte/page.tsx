@@ -82,6 +82,7 @@ export default function OferteP() {
           .select('oferta_id, oferte!inner(status)')
           .eq('oferte.status', 'confirmata')
           .not('livrat_la', 'is', null)
+          .is('scos_la', null)
         const ids = [...new Set((livrate ?? []).map(l => l.oferta_id as string))]
         if (!ids.length) { setOferte([]); setLoading(false); return }
         query = query.eq('status', 'confirmata').in('id', ids)
@@ -113,6 +114,7 @@ export default function OferteP() {
         .from('oferte_produse')
         .select('oferta_id, produs_id, cod, cantitate, livrat_la')
         .in('oferta_id', confirmate)
+        .is('scos_la', null)
 
       setOferteLivrate(new Set((produse ?? []).filter(p => p.livrat_la).map(p => p.oferta_id)))
       if (!produse?.length) { setOfertePregate(new Set()); return }
