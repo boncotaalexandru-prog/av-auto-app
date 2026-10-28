@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { toateRandurile } from '@/lib/toateRandurile'
 
 // ─── Tipuri ──────────────────────────────────────────────────────────────────
 
@@ -221,9 +222,10 @@ export default function RezultateContent() {
           .in('status', ['emisa', 'stornata']),
 
         // Stoc pentru furnizori
-        supabase
+        toateRandurile(() => supabase
           .from('stoc')
-          .select('produs_cod, furnizor_nume'),
+          .select('produs_cod, furnizor_nume')
+          .order('id')).then(data => ({ data, error: null })),
 
         // Angajati cu formula de calcul
         supabase.from('angajati').select('id, nume, tip, suma_fixa, procent, activ').eq('activ', true),
@@ -235,7 +237,7 @@ export default function RezultateContent() {
           .eq('luna', luna + '-01'),
 
         // Masini active
-        supabase.from('masini').select('id, nr_inmatriculare, marca, model').eq('activa', true),
+        supabase.from('parc_masini').select('id, nr_inmatriculare, marca, model'),
 
         // Alimentari luna
         supabase

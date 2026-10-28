@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { toateRandurile } from '@/lib/toateRandurile'
 
 interface KPI {
   ridicariActive: number
@@ -29,12 +30,12 @@ export default function DashboardPage() {
 
       const [
         { count: ridicariActive },
-        { data: stocRows },
+        stocRows,
         { count: nrClienti },
         { data: facturiLuna },
       ] = await Promise.all([
         supabase.from('ridicari').select('id', { count: 'exact', head: true }).eq('ridicat', false),
-        supabase.from('stoc').select('cantitate, pret_achizitie'),
+        toateRandurile(() => supabase.from('stoc').select('cantitate, pret_achizitie').order('id')),
         supabase.from('clienti').select('id', { count: 'exact', head: true }),
         supabase.from('facturi_produse').select('cantitate, pret_vanzare, factura_id, facturi!inner(data_emitere)').gte('facturi.data_emitere', lunaStartStr),
       ])

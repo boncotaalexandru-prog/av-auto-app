@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { toateRandurile } from '@/lib/toateRandurile'
 import { incarcaRezervari, incarcaStoc, cuDisponibil } from '@/lib/rezervari'
 import { filtreCod } from '@/lib/cautareCod'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
@@ -47,11 +48,12 @@ export default function EchivalentePage() {
     setLoading(true)
     const supabase = createClient()
 
-    const { data: produse } = await supabase
+    const produse = await toateRandurile(() => supabase
       .from('produse')
       .select('id, cod, nume, producator, unitate, grup_echivalente_id')
       .not('grup_echivalente_id', 'is', null)
       .order('nume')
+      .order('id'))
 
     if (!produse?.length) { setGrupuri([]); setLoading(false); return }
 

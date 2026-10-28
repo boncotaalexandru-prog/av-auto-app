@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { toateRandurile } from '@/lib/toateRandurile'
 import { useUtilizator } from '@/components/auth/UtilizatorContext'
 import { filtreCod, produseCuAcelasiCod } from '@/lib/cautareCod'
 import { incarcaRezervari, alocaRezervari, type Rezervare } from '@/lib/rezervari'
@@ -187,8 +188,8 @@ export default function GestiunePage() {
   async function incarcaStoc() {
     setLoadingStoc(true)
     const supabase = createClient()
-    const { data } = await supabase.from('stoc').select('*').order('produs_nume')
-    setStoc((data as StocItem[]) ?? [])
+    const data = await toateRandurile(() => supabase.from('stoc').select('*').order('produs_nume').order('id'))
+    setStoc(data as StocItem[])
 
     setRezervari(await incarcaRezervari(supabase))
 

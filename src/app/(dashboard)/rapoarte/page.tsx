@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { toateRandurile } from '@/lib/toateRandurile'
 
 // ─── Tipuri ──────────────────────────────────────────────────────────────────
 
@@ -128,12 +129,12 @@ export default function RapoartePage() {
       // Step 1: toate query-urile în paralel, inclusiv facturi (pentru IDs)
       const [oRaw, pRaw, clientiRaw, profilRaw, sRaw, nRaw, fRaw] = await Promise.all([
         supabase.from('oferte').select('id, status, created_at, preluat_de, client_id').order('created_at', { ascending: false }).limit(500),
-        supabase.from('oferte_produse').select('oferta_id, pret_vanzare, pret_achizitie, cantitate, produs_nume').limit(5000),
-        supabase.from('clienti').select('id, denumire'),
+        toateRandurile(() => supabase.from('oferte_produse').select('oferta_id, pret_vanzare, pret_achizitie, cantitate, produs_nume:nume_produs').order('id')).then(data => ({ data })),
+        toateRandurile(() => supabase.from('clienti').select('id, denumire').order('id')).then(data => ({ data })),
         supabase.from('profiles').select('id, full_name, email'),
-        supabase.from('stoc').select('produs_nume, produs_cod, cantitate, pret_achizitie, pret_lista, furnizor_nume').order('produs_nume'),
+        toateRandurile(() => supabase.from('stoc').select('produs_nume, produs_cod, cantitate, pret_achizitie, pret_lista, furnizor_nume').order('produs_nume').order('id')).then(data => ({ data })),
         supabase.from('nir').select('id, numar, data_intrare, furnizor_nume, total_fara_tva, total_cu_tva').order('data_intrare', { ascending: false }).limit(200),
-        supabase.from('facturi').select('id, data_emitere, client_id, tip').in('status', ['emisa', 'stornata']).order('data_emitere', { ascending: false }),
+        toateRandurile(() => supabase.from('facturi').select('id, data_emitere, client_id, tip').in('status', ['emisa', 'stornata']).order('data_emitere', { ascending: false }).order('id')).then(data => ({ data })),
       ])
 
       // Mapuri pentru join rapid

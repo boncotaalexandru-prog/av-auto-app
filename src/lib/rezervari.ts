@@ -124,11 +124,13 @@ export async function incarcaStoc(supabase: SupabaseClient, produsIds: string[],
   const select = 'id, produs_id, produs_cod, cantitate, pret_achizitie, pret_lista, furnizor_nume, updated_at'
   const ids = [...new Set(produsIds.filter(Boolean))]
   const cods = [...new Set(coduri.filter(Boolean))]
-  const [prinId, prinCod] = await Promise.all([
-    ids.length ? supabase.from('stoc').select(select).gt('cantitate', 0).in('produs_id', ids) : Promise.resolve({ data: [] }),
-    cods.length ? supabase.from('stoc').select(select).gt('cantitate', 0).in('produs_cod', cods) : Promise.resolve({ data: [] }),
+  // Cate 100 pe cerere: sute de id-uri intr-un singur .in() fac adresa prea lunga si Supabase raspunde 400
+  const loturi = <T,>(xs: T[]) => Array.from({ length: Math.ceil(xs.length / 100) }, (_, i) => xs.slice(i * 100, (i + 1) * 100))
+  const rezultate = await Promise.all([
+    ...loturi(ids).map(lot => supabase.from('stoc').select(select).gt('cantitate', 0).in('produs_id', lot)),
+    ...loturi(cods).map(lot => supabase.from('stoc').select(select).gt('cantitate', 0).in('produs_cod', lot)),
   ])
   const unice = new Map<string, RandStoc>()
-  for (const r of [...(prinId.data ?? []), ...(prinCod.data ?? [])] as RandStoc[]) unice.set(r.id, r)
+  for (const r of rezultate.flatMap(res => res.data ?? []) as RandStoc[]) unice.set(r.id, r)
   return [...unice.values()]
 }
