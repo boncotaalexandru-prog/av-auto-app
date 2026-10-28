@@ -24,6 +24,8 @@ const STATUS_LABEL: Record<string, { label: string; cls: string; style: React.CS
   confirmata: { label: 'Confirmata',  cls: 'text-white font-semibold', style: { backgroundColor: '#7c3aed' } },
   in_facturare: { label: 'In facturare', cls: 'text-white font-semibold', style: { backgroundColor: '#475569' } },
   facturat:   { label: 'Facturat',    cls: 'text-white font-semibold', style: { backgroundColor: '#0f172a' } },
+  stornata:   { label: 'Stornata',    cls: 'text-white font-semibold', style: { backgroundColor: '#be185d' } },
+  stornata_partial: { label: 'Stornata partial', cls: 'text-white font-semibold', style: { backgroundColor: '#db2777' } },
   anulata:    { label: 'Anulata',     cls: 'text-white font-semibold', style: { backgroundColor: '#dc2626' } },
 }
 

@@ -99,6 +99,8 @@ const STATUS: Record<string, { label: string; color: string }> = {
   confirmata_partial:  { label: 'Confirmat Partial',   color: '#0891b2' },
   in_facturare:        { label: 'In facturare',        color: '#475569' },
   facturat:            { label: 'Facturat',            color: '#0f172a' },
+  stornata:            { label: 'Stornata',            color: '#be185d' },
+  stornata_partial:    { label: 'Stornata partial',    color: '#db2777' },
   anulata:             { label: 'Anulata',             color: '#dc2626' },
 }
 
@@ -168,6 +170,8 @@ export default function OfertaPage() {
   const [pretSalvat, setPretSalvat] = useState<Record<string, boolean>>({})
   const [isAdmin, setIsAdmin] = useState(false)
   const [eu, setEu] = useState<{ id: string; full_name: string | null } | null>(null)
+  // Cât s-a stornat din fiecare piesă (după oferta_produs_id) — doar pe ofertele stornate
+  const [stornatPePiesa, setStornatPePiesa] = useState<Record<string, number>>({})
   const prodRef = useRef<HTMLDivElement>(null)
   const furnRef = useRef<HTMLDivElement>(null)
 
@@ -543,6 +547,25 @@ export default function OfertaPage() {
     closeModal()
   }
 
+  useEffect(() => {
+    if (!oferta || !['stornata', 'stornata_partial'].includes(oferta.status) || !produse.length) return
+    const supabase = createClient()
+    supabase.from('facturi_produse').select('id, oferta_produs_id')
+      .in('oferta_produs_id', produse.map(p => p.id)).gt('cantitate', 0)
+      .then(async ({ data: facturate }) => {
+        if (!facturate?.length) return
+        const { data: storno } = await supabase.from('facturi_produse').select('referinta_linie_id, cantitate')
+          .in('referinta_linie_id', facturate.map(f => f.id)).lt('cantitate', 0)
+        const piesaLiniei = Object.fromEntries(facturate.map(f => [f.id, f.oferta_produs_id as string]))
+        const m: Record<string, number> = {}
+        for (const s of storno ?? []) {
+          const piesa = piesaLiniei[s.referinta_linie_id as string]
+          if (piesa) m[piesa] = (m[piesa] ?? 0) + Math.abs(Number(s.cantitate))
+        }
+        setStornatPePiesa(m)
+      })
+  }, [oferta, produse])
+
   // Livrat nefacturat: piesa a plecat la client inainte de factura → se blocheaza din stoc
   async function marcheazaLivrat(ids: string[], livrat: boolean) {
     if (!ids.length || !eu) return
@@ -811,7 +834,7 @@ export default function OfertaPage() {
                     🔒 Facturat
                   </span>
                 )}
-                {['in_facturare', 'facturat'].includes(oferta.status) && oferta.factura_id && (
+                {['in_facturare', 'facturat', 'stornata', 'stornata_partial'].includes(oferta.status) && oferta.factura_id && (
                   <a
                     href={`/facturare/${oferta.factura_id}`}
                     className="px-4 py-1.5 text-white text-sm font-bold rounded-lg no-underline"
@@ -950,6 +973,11 @@ export default function OfertaPage() {
                   <td className="px-4 py-2.5 text-gray-900 font-medium">
                     <div className="flex items-center gap-1.5">
                       <span>{p.nume_produs}</span>
+                      {(stornatPePiesa[p.id] ?? 0) > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-xs font-semibold text-white whitespace-nowrap" style={{ backgroundColor: '#be185d' }}>
+                          ↩ stornat {stornatPePiesa[p.id]}
+                        </span>
+                      )}
                       <EchivalentePopover
                         produsId={p.produs_id}
                         grupEchivalenteId={p.produse?.grup_echivalente_id ?? null}

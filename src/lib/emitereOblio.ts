@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { verificaClientPentruFactura, verificaFacturaInOblio } from '@/lib/anafFacturare'
 import { clientPentruOblio, type ClientFacturare } from '@/lib/oblioClient'
 import { numarFactura } from '@/lib/numarFactura'
-import { marcheazaOferteFacturate } from '@/lib/oferteFactura'
+import { marcheazaOferteFacturate, actualizeazaOferteDupaStorno } from '@/lib/oferteFactura'
 
 export interface OblioSettings {
   oblio_email: string
@@ -359,6 +359,9 @@ export async function emiteStorno(p: {
 
   // Factura originală stornată complet nu mai poate fi stornată din nou
   if (p.integral) await supabase.from('facturi').update({ status: 'stornata' }).eq('id', p.integral)
+
+  // Ofertele facturilor stornate primesc eticheta „Stornată" / „Stornată parțial"
+  await actualizeazaOferteDupaStorno(idsOriginale)
 
   return { ok: true, stornoId: storno.id }
 }
