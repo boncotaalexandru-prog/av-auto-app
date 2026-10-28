@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { filtreCod } from '@/lib/cautareCod'
 
 interface Produs {
   id: string
@@ -45,7 +46,7 @@ export default function TabelProduse({ refresh }: { refresh: number }) {
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
     if (search.trim()) {
-      query = query.or(`nume.ilike.%${search}%,cod.ilike.%${search}%,producator.ilike.%${search}%`)
+      query = query.or([`nume.ilike.%${search}%`, `cod.ilike.%${search}%`, `producator.ilike.%${search}%`, ...filtreCod(search)].join(','))
     }
 
     query.then(({ data }) => {

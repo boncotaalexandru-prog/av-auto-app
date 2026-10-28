@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { filtreCod } from '@/lib/cautareCod'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
 import EchivalentePopover from '@/components/produse/EchivalentePopover'
 
@@ -184,7 +185,7 @@ export default function OfertaPage() {
     const q = prodSearch.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     supabase.from('produse')
       .select('id, cod, nume, unitate, pret, producator')
-      .or(`nume.ilike.%${q}%,cod.ilike.%${q}%`)
+      .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
       .limit(15)
       .then(async ({ data }) => {
         const prodList = data ?? []
@@ -193,7 +194,7 @@ export default function OfertaPage() {
           .select('id, produs_cod, produs_nume, unitate, pret_achizitie, pret_lista, producator, cantitate')
           .gt('cantitate', 0)
           .is('produs_id', null)
-          .or(`produs_nume.ilike.%${q}%,produs_cod.ilike.%${q}%`)
+          .or([`produs_nume.ilike.%${q}%`, `produs_cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
           .limit(5)
         // Exclude stoc entries deja acoperite de un produs din catalog (acelasi cod)
         const prodCods = new Set(prodList.filter(p => p.cod).map(p => p.cod as string))

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { cuiAfisat, type AnafStare } from '@/lib/anaf'
+import EticheteAnaf from './EticheteAnaf'
 
 interface Client {
   id: string
@@ -13,6 +15,8 @@ interface Client {
   telefon: string | null
   email: string | null
   are_contract: boolean
+  platitor_tva: boolean | null
+  anaf_state: AnafStare | null
 }
 
 export default function TabelClienti({ refresh }: { refresh: number }) {
@@ -34,7 +38,7 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
 
     let query = supabase
       .from('clienti')
-      .select('id, denumire, cod_fiscal, localitate, judet, telefon, email, are_contract')
+      .select('id, denumire, cod_fiscal, localitate, judet, telefon, email, are_contract, platitor_tva, anaf_state')
       .order('denumire')
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
@@ -89,6 +93,7 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Localitate</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Judet</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Telefon</th>
+                  <th className="text-left px-4 py-3 text-gray-600 font-medium">ANAF</th>
                   <th className="text-left px-4 py-3 text-gray-600 font-medium">Contract</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -107,10 +112,13 @@ export default function TabelClienti({ refresh }: { refresh: number }) {
                         {c.denumire}
                       </button>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-900 font-mono text-xs">{c.cod_fiscal || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-900 font-mono text-xs">{cuiAfisat(c.cod_fiscal, c.platitor_tva) || c.cod_fiscal || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-600">{c.localitate || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-900">{c.judet || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-900">{c.telefon || '—'}</td>
+                    <td className="px-4 py-2.5">
+                      <EticheteAnaf stare={c.anaf_state} platitorTva={c.platitor_tva} />
+                    </td>
                     <td className="px-4 py-2.5">
                       {c.are_contract ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">

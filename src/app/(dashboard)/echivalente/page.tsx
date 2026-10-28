@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { filtreCod } from '@/lib/cautareCod'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
 
 interface ProdusInGrup {
@@ -94,7 +95,7 @@ export default function EchivalentePage() {
     const excludeIds = new Set(grupCurent?.produse.map(p => p.id) ?? [])
     createClient().from('produse')
       .select('id, cod, nume, producator, grup_echivalente_id')
-      .or(`nume.ilike.%${cautare}%,cod.ilike.%${cautare}%`)
+      .or([`nume.ilike.%${cautare}%`, `cod.ilike.%${cautare}%`, ...filtreCod(cautare)].join(','))
       .limit(10)
       .then(({ data }) => setCautareResults((data ?? []).filter((p: CatalogProdus) => !excludeIds.has(p.id))))
   }, [cautare, adaugandLaGrup, grupuri])
@@ -105,7 +106,7 @@ export default function EchivalentePage() {
     const excludeIds = new Set(selectateNouGrup.map(p => p.id))
     createClient().from('produse')
       .select('id, cod, nume, producator, grup_echivalente_id')
-      .or(`nume.ilike.%${cautareNouGrup}%,cod.ilike.%${cautareNouGrup}%`)
+      .or([`nume.ilike.%${cautareNouGrup}%`, `cod.ilike.%${cautareNouGrup}%`, ...filtreCod(cautareNouGrup)].join(','))
       .limit(10)
       .then(({ data }) => setCautareNouGrupResults((data ?? []).filter((p: CatalogProdus) => !excludeIds.has(p.id))))
   }, [cautareNouGrup, selectateNouGrup])
@@ -120,7 +121,7 @@ export default function EchivalentePage() {
       const excludeIds = new Set(grupCurent?.produse.map(p => p.id) ?? [])
       createClient().from('produse')
         .select('id, cod, nume, producator, grup_echivalente_id')
-        .or(`nume.ilike.%${q}%,cod.ilike.%${q}%`)
+        .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
         .limit(8)
         .then(({ data }) => setCautareAdaugaResults(prev => ({
           ...prev,

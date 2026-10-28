@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { filtreCod } from '@/lib/cautareCod'
+import { cuiAfisat, type AnafStare } from '@/lib/anaf'
+import EticheteAnaf from '@/components/clienti/EticheteAnaf'
 
 interface Client {
   id: string
@@ -20,7 +23,12 @@ interface Client {
   pers_contact: string | null
   telefon: string | null
   are_contract: boolean
-  platitor_tva: boolean
+  platitor_tva: boolean | null
+  strada: string | null
+  numar: string | null
+  cod_postal: string | null
+  anaf_state: AnafStare | null
+  anaf_checked_at: string | null
   termen_plata: number | null
   observatii: string | null
 }
@@ -49,6 +57,9 @@ const FIELD_LABELS: Record<string, string> = {
   adresa: 'Adresa',
   localitate: 'Localitate',
   judet: 'Judet',
+  strada: 'Strada',
+  numar: 'Numar',
+  cod_postal: 'Cod postal',
   banca: 'Banca',
   iban: 'IBAN',
   tara: 'Tara',
@@ -67,6 +78,8 @@ export default function ClientPage() {
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState<Partial<Client>>({})
+  const [reverificand, setReverificand] = useState(false)
+  const [mesajAnaf, setMesajAnaf] = useState('')
 
   // Parc auto state
   const [masinaNoua, setMasinaNoua] = useState({ nr_inmatriculare: '', marca: '', vin: '' })
@@ -119,6 +132,30 @@ export default function ClientPage() {
     setEditMode(false)
   }
 
+  async function reverificaAnaf() {
+    if (!client) return
+    setReverificand(true); setMesajAnaf('')
+    try {
+      const res = await fetch('/api/anaf/client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: client.id, mod: 'fortat' }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMesajAnaf(data.error ?? 'Eroare'); return }
+      if (data.stare === 'neverificabil') setMesajAnaf('Clientul nu are CUI românesc de firmă — nu se verifică la ANAF.')
+      else if (data.stare === 'invalid') setMesajAnaf(data.mesaj)
+      else if (data.stare === 'eroare') setMesajAnaf('ANAF nu a răspuns. Încercați din nou peste câteva minute. Datele salvate au rămas neschimbate.')
+      // reîncarcă tot rândul, ca formularul de editare să aibă datele noi
+      const { data: c } = await createClient().from('clienti').select('*').eq('id', client.id).single()
+      if (c) { setClient(c); setForm(c) }
+    } catch {
+      setMesajAnaf('ANAF nu a răspuns. Încercați din nou peste câteva minute.')
+    } finally {
+      setReverificand(false)
+    }
+  }
+
   async function addMasina() {
     if (!masinaNoua.nr_inmatriculare.trim() && !masinaNoua.marca.trim()) return
     const supabase = createClient()
@@ -144,7 +181,7 @@ export default function ClientPage() {
     if (q.trim().length < 2) { setProdResults([]); setShowProdDrop(false); return }
     const { data } = await createClient().from('produse')
       .select('id, cod, nume, pret')
-      .or(`nume.ilike.%${q}%,cod.ilike.%${q}%`)
+      .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
       .limit(10)
     setProdResults(data ?? [])
     setShowProdDrop(true)
@@ -244,6 +281,25 @@ export default function ClientPage() {
         )}
       </div>
 
+      {/* ANAF */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 flex-wrap">
+        <span className="text-sm font-semibold text-gray-900">ANAF:</span>
+        <EticheteAnaf stare={client.anaf_state} platitorTva={client.platitor_tva} />
+        <span className="text-xs text-gray-800">
+          {client.anaf_checked_at
+            ? `verificat ${new Date(client.anaf_checked_at).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+            : 'neverificat încă'}
+        </span>
+        <button
+          onClick={reverificaAnaf}
+          disabled={reverificand}
+          className="ml-auto px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg disabled:opacity-50"
+        >
+          {reverificand ? 'Verific…' : 'Reverifică la ANAF'}
+        </button>
+        {mesajAnaf && <p className="w-full text-sm text-yellow-900 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">{mesajAnaf}</p>}
+      </div>
+
       {/* Date generale */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h3 className="font-semibold text-gray-900 mb-4">Date generale</h3>
@@ -259,7 +315,7 @@ export default function ClientPage() {
                   className="w-full px-2 py-1 border border-blue-400 rounded text-sm text-gray-900"
                 />
               ) : (
-                <p className="text-sm text-gray-900">{(client[key as keyof Client] as string) || <span className="text-gray-600">—</span>}</p>
+                <p className="text-sm text-gray-900">{(key === 'cod_fiscal' ? cuiAfisat(client.cod_fiscal, client.platitor_tva) : client[key as keyof Client] as string) || <span className="text-gray-600">—</span>}</p>
               )}
             </div>
           ))}
@@ -304,9 +360,9 @@ export default function ClientPage() {
               </label>
             ) : (
               <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                client.platitor_tva ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-900'
+                client.platitor_tva ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-900'
               }`}>
-                {client.platitor_tva ? 'Da' : 'Nu'}
+                {client.platitor_tva == null ? 'Necunoscut' : client.platitor_tva ? 'Da' : 'Nu'}
               </span>
             )}
           </div>

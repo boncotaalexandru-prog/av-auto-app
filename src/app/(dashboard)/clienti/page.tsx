@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import ImportClienti from '@/components/clienti/ImportClienti'
 import TabelClienti from '@/components/clienti/TabelClienti'
+import ClientNou from '@/components/clienti/ClientNou'
 
 export default function ClientiPage() {
   const [refresh, setRefresh] = useState(0)
@@ -11,7 +12,10 @@ export default function ClientiPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Clienti</h2>
-        <ImportClienti onDone={() => setRefresh(r => r + 1)} />
+        <div className="flex items-center gap-3">
+          <ClientNou onDone={() => setRefresh(r => r + 1)} />
+          <ImportClienti onDone={() => setRefresh(r => r + 1)} />
+        </div>
       </div>
       <TabelClienti refresh={refresh} />
     </div>

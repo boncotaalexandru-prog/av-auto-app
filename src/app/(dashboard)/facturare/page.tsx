@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { filtreCod } from '@/lib/cautareCod'
+import { numarFactura } from '@/lib/numarFactura'
+import { emiteFactura as emiteFacturaOblio, emiteStorno as emiteStornoOblio } from '@/lib/emitereOblio'
 
 // ─── Tipuri ─────────────────────────────────────────────────────────────────
 
@@ -64,17 +67,12 @@ interface FacturaItem {
   oblio_numar: number | null
 }
 
-interface OblioSettings {
-  oblio_email: string
-  oblio_secret: string
-  cui: string
-  serie_factura: string
-}
-
 interface StornoLinie {
   _key: string
   factura_id: string
   factura_numar: number
+  factura_oblio_serie: string | null
+  factura_oblio_numar: number | null
   factura_data: string
   linie_id: string
   produs_id: string | null
@@ -118,18 +116,8 @@ function FacturarePageInner() {
   const [view, setView] = useState<'lista' | 'nou' | 'storno'>('lista')
 
   // ─── Setari Oblio ─────────────────────────────────────────────────────────
-  const [oblioSettings, setOblioSettings] = useState<OblioSettings | null>(null)
   const [emitandId, setEmitandId] = useState<string | null>(null)
   const [toastDataSchimbata, setToastDataSchimbata] = useState<{ veche: string; noua: string } | null>(null)
-
-  useEffect(() => {
-    createClient()
-      .from('settings')
-      .select('oblio_email, oblio_secret, cui, serie_factura')
-      .eq('id', 1)
-      .single()
-      .then(({ data }) => { if (data) setOblioSettings(data as OblioSettings) })
-  }, [])
 
   // ─── Lista facturi ────────────────────────────────────────────────────────
   const [facturi, setFacturi] = useState<FacturaItem[]>([])
@@ -447,13 +435,13 @@ function FacturarePageInner() {
       // Cauta in tabela produse
       const { data: dinProduse } = await supabase.from('produse')
         .select('id, cod, nume, unitate, producator')
-        .or(`nume.ilike.%${q}%,cod.ilike.%${q}%`)
+        .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
         .limit(10)
 
       // Cauta si direct in stoc (produse importate fara intrare in tabela produse)
       const { data: dinStoc } = await supabase.from('stoc')
-        .select('produs_id, produs_cod, produs_nome, unitate, furnizor_nume, cantitate')
-        .or(`produs_nome.ilike.%${q}%,produs_cod.ilike.%${q}%`)
+        .select('produs_id, produs_cod, produs_nume, unitate, furnizor_nume, cantitate')
+        .or([`produs_nume.ilike.%${q}%`, `produs_cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
         .gt('cantitate', 0)
         .limit(10)
 
@@ -466,11 +454,11 @@ function FacturarePageInner() {
       for (const s of (dinStoc ?? [])) {
         const dejaPrinId = s.produs_id && idsGasite.has(s.produs_id)
         const dejaPrinCod = s.produs_cod && coduriGasite.has(s.produs_cod)
-        if (!dejaPrinId && !dejaPrinCod && s.produs_nome) {
+        if (!dejaPrinId && !dejaPrinCod && s.produs_nume) {
           extraDinStoc.push({
             id: s.produs_id ?? `stoc_${s.produs_cod}`,
             cod: s.produs_cod ?? null,
-            nume: s.produs_nome,
+            nume: s.produs_nume,
             unitate: s.unitate ?? 'buc',
             producator: null,
           })
@@ -705,148 +693,15 @@ function FacturarePageInner() {
 
   async function emiteFactura(id: string) {
     setEmitandId(id)
-    const supabase = createClient()
-
-    // ── Scade stocul la emitere (FIFO) ──────────────────────────────────────
-    const { data: liniiEmitere } = await supabase
-      .from('facturi_produse')
-      .select('stoc_id, cod, cantitate')
-      .eq('factura_id', id)
-
-    for (const r of (liniiEmitere ?? [])) {
-      let deScazut = r.cantitate ?? 1
-      if (r.stoc_id) {
-        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', r.stoc_id).single()
-        if (s) await supabase.from('stoc').update({ cantitate: Math.max(0, s.cantitate - deScazut) }).eq('id', r.stoc_id)
-        continue
-      }
-      if (!r.cod) continue
-      const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
-        .gt('cantitate', 0).eq('produs_cod', r.cod).order('updated_at', { ascending: true })
-      for (const intrare of (intrari ?? [])) {
-        if (deScazut <= 0) break
-        const scade = Math.min(deScazut, intrare.cantitate)
-        await supabase.from('stoc').update({ cantitate: intrare.cantitate - scade }).eq('id', intrare.id)
-        deScazut -= scade
-      }
-    }
-
-    // Încearcă trimitere Oblio dacă sunt credențiale configurate
-    if (oblioSettings?.oblio_email && oblioSettings?.oblio_secret && oblioSettings?.cui && oblioSettings?.serie_factura) {
-      try {
-        // Încarcă factura completă
-        const { data: factura } = await supabase
-          .from('facturi')
-          .select('id, numar, data_emitere, data_scadenta, observatii, nota_interna, client_id')
-          .eq('id', id).single()
-
-        // Verifică și actualizează data emiterii dacă e diferită de azi
-        const azi = new Date().toISOString().slice(0, 10)
-        let dataEmitereFinala = factura?.data_emitere ?? azi
-        if (factura && factura.data_emitere !== azi) {
-          await supabase.from('facturi').update({ data_emitere: azi }).eq('id', id)
-          setToastDataSchimbata({ veche: factura.data_emitere, noua: azi })
-          setTimeout(() => setToastDataSchimbata(null), 6000)
-          dataEmitereFinala = azi
-        }
-
-        // Încarcă datele clientului
-        const { data: client } = await supabase
-          .from('clienti')
-          .select('denumire, cod_fiscal, reg_com, adresa, localitate, judet, tara, telefon, email, platitor_tva')
-          .eq('id', factura?.client_id).single()
-
-        if (!client?.denumire) {
-          alert('⚠️ Clientul nu are denumire completată. Completează datele clientului înainte de a emite.')
-          setEmitandId(null)
-          return
-        }
-
-        // Încarcă produsele facturii
-        const { data: produse } = await supabase
-          .from('facturi_produse')
-          .select('nume_produs, cod, unitate, cantitate, pret_vanzare')
-          .eq('factura_id', id)
-
-        const vatPayer = client?.platitor_tva ?? false
-
-        const oblioPayload = {
-          cif: oblioSettings.cui.replace(/^RO/i, '').trim(),
-          issueDate: dataEmitereFinala,
-          dueDate: factura?.data_scadenta ?? '',
-          seriesName: oblioSettings.serie_factura,
-          currency: 'RON',
-          language: 'RO',
-          isDraft: 0,           // finalizata direct, nu ciorna
-          useStock: 0,          // oblio nu descarca stoc propriu
-          mentions: factura?.observatii ?? '',
-          internalNote: factura?.nota_interna ?? '',
-          client: {
-            cif: client?.cod_fiscal ?? '',
-            name: client?.denumire ?? '',
-            rc: client?.reg_com ?? '',
-            address: client?.adresa ?? '',
-            city: client?.localitate ?? '',
-            county: client?.judet ?? '',
-            country: client?.tara || 'Romania',
-            phone: client?.telefon ?? '',
-            email: client?.email ?? '',
-            vatPayer,
-          },
-          products: (produse ?? []).map(p => ({
-            name: p.nume_produs,
-            productType: 'Marfa',
-            management: 'Gestiune AV Auto',
-            measuringUnit: p.unitate || 'buc',
-            quantity: p.cantitate,
-            price: parseFloat((p.pret_vanzare * 1.21).toFixed(4)), // Oblio asteapta pretul CU TVA inclus
-            vatName: 'Normala',
-            vatPercentage: 21,
-            isDiscount: false,
-          })),
-        }
-
-        const res = await fetch('/api/oblio', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            oblioEmail: oblioSettings.oblio_email,
-            oblioSecret: oblioSettings.oblio_secret,
-            invoiceData: oblioPayload,
-          }),
-        })
-        const data = await res.json()
-
-        if (res.ok && (data.link || data.data?.link)) {
-          // Succes Oblio — salvează link și marchează emisa
-          const link = data.link ?? data.data?.link
-          const seriesName = data.seriesName ?? data.data?.seriesName
-          const number = data.number ?? data.data?.number
-          await supabase.from('facturi')
-            .update({ status: 'emisa', oblio_link: link, oblio_serie: seriesName ?? null, oblio_numar: number ?? null })
-            .eq('id', id)
-          setEmitandId(null)
-          loadFacturi()
-          return
-        } else {
-          // Eroare Oblio — NU marcam ca emisa, afișăm tot răspunsul
-          const errMsg = data.error ?? data.statusMessage ?? data.message ?? 'Eroare necunoscută Oblio'
-          const details = data.details ? JSON.stringify(data.details) : ''
-          alert(`⚠️ Oblio: ${errMsg}${details ? '\n' + details : ''}\n\nFactura NU a fost trimisă. Corectează și încearcă din nou.`)
-          setEmitandId(null)
-          return
-        }
-      } catch (e) {
-        alert(`⚠️ Conexiune Oblio eșuată: ${e}\n\nFactura NU a fost trimisă.`)
-        setEmitandId(null)
-        return
-      }
-    }
-
-    // Fara Oblio configurat — doar actualizăm statusul local
-    await supabase.from('facturi').update({ status: 'emisa' }).eq('id', id)
+    const r = await emiteFacturaOblio(id)
     setEmitandId(null)
     loadFacturi()
+    if (!r.ok) { alert(r.mesaj); return }
+    if (r.dataSchimbata) {
+      setToastDataSchimbata(r.dataSchimbata)
+      setTimeout(() => setToastDataSchimbata(null), 6000)
+    }
+    if (r.avertisment) alert(`⚠️ Factura a fost emisă, dar:\n\n${r.avertisment}`)
   }
 
   async function stergeNefinalizata(id: string) {
@@ -929,7 +784,7 @@ function FacturarePageInner() {
     // 1. Facturi normale emise/platite ale clientului
     const { data: fRows } = await supabase
       .from('facturi')
-      .select('id, numar, data_emitere')
+      .select('id, numar, data_emitere, oblio_serie, oblio_numar')
       .eq('client_id', clientId)
       .in('status', ['emisa'])
       .eq('tip', 'normala')
@@ -976,6 +831,8 @@ function FacturarePageInner() {
         _key: p.id,
         factura_id: p.factura_id,
         factura_numar: f.numar,
+        factura_oblio_serie: (f as { oblio_serie?: string | null }).oblio_serie ?? null,
+        factura_oblio_numar: (f as { oblio_numar?: number | null }).oblio_numar ?? null,
         factura_data: f.data_emitere,
         linie_id: p.id,
         produs_id: (p as { produs_id?: string | null }).produs_id ?? null,
@@ -999,56 +856,17 @@ function FacturarePageInner() {
   async function emiteStorno() {
     const selectate = stornoLinii.filter(l => l.selectat && l.cantitate > 0)
     if (!selectate.length || !stornoClientId) return
-    if (!confirm(`Emiți o factură storno cu ${selectate.length} produs(e)? Stocul va fi restituit.`)) return
+    if (!confirm(`Emiți o factură storno cu ${selectate.length} produs(e)? Se trimite și în Oblio, iar stocul va fi restituit.`)) return
 
     setStornoSalvand(true)
-    const supabase = createClient()
-
-    const { data: storno, error } = await supabase.from('facturi').insert({
-      client_id: stornoClientId,
-      data_emitere: stornoDataEmitere,
-      status: 'emisa',
-      tip: 'storno',
+    const r = await emiteStornoOblio({
+      clientId: stornoClientId,
+      dataEmitere: stornoDataEmitere,
       observatii: stornoObservatii.trim() || null,
-    }).select('id').single()
-
-    if (error || !storno) {
-      alert('Eroare la creare storno: ' + error?.message)
-      setStornoSalvand(false)
-      return
-    }
-
-    await supabase.from('facturi_produse').insert(
-      selectate.map(l => ({
-        factura_id: storno.id,
-        referinta_linie_id: l.linie_id,
-        produs_id: l.produs_id,
-        stoc_id: l.stoc_id,
-        nume_produs: l.nume_produs,
-        cod: l.cod,
-        producator: l.producator,
-        unitate: l.unitate,
-        cantitate: -l.cantitate,
-        pret_achizitie: l.pret_achizitie,
-        pret_vanzare: l.pret_vanzare,
-      }))
-    )
-
-    for (const l of selectate) {
-      if (l.stoc_id) {
-        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', l.stoc_id).single()
-        if (s) await supabase.from('stoc').update({ cantitate: s.cantitate + l.cantitate }).eq('id', l.stoc_id)
-        continue
-      }
-      if (!l.cod) continue
-      const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
-        .eq('produs_cod', l.cod).order('updated_at', { ascending: true }).limit(1)
-      if (intrari?.length) {
-        await supabase.from('stoc').update({ cantitate: intrari[0].cantitate + l.cantitate }).eq('id', intrari[0].id)
-      }
-    }
-
-    router.push(`/facturare/${storno.id}`)
+      linii: selectate,
+    })
+    if (!r.ok) { alert(r.mesaj); setStornoSalvand(false); return }
+    router.push(`/facturare/${r.stornoId}`)
   }
 
   const total = randuri.reduce((s, r) => s + r.cantitate * r.pret_vanzare, 0)
@@ -1172,7 +990,7 @@ function FacturarePageInner() {
                   return (
                     <tr key={f.id} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
-                        <span className="font-mono font-bold text-gray-900">#{f.numar}</span>
+                        <span className="font-mono font-bold text-gray-900">{numarFactura(f)}</span>
                       </td>
                       <td className="px-5 py-3 font-medium text-gray-900">
                         {f.client_denumire}
@@ -1365,7 +1183,11 @@ function FacturarePageInner() {
                         </td>
                         {li === 0 ? (
                           <td className="px-4 py-2.5" rowSpan={liniiFactura.length}>
-                            <span className="font-mono font-bold text-gray-900">#{primalinie.factura_numar}</span>
+                            <span className="font-mono font-bold text-gray-900">{numarFactura({
+                              numar: primalinie.factura_numar,
+                              oblio_serie: primalinie.factura_oblio_serie,
+                              oblio_numar: primalinie.factura_oblio_numar,
+                            })}</span>
                             <p className="text-xs text-gray-500 mt-0.5">
                               {new Date(primalinie.factura_data).toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                             </p>

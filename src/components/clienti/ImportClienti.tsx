@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { read, utils } from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
+import { curataCui } from '@/lib/anaf'
 
 interface ClientImport {
   denumire: string
@@ -20,6 +21,9 @@ interface ClientImport {
   telefon: string
 }
 
+// Nr. Reg. Com. în forma nouă (ex: J2005001721136), după refacerea certificatelor
+const REG_COM_NOU = /^[JFC]\d{13}$/i
+
 function clean(v: unknown): string {
   const s = String(v ?? '').trim()
   return s === '-' || s === 'undefined' ? '' : s
@@ -29,7 +33,8 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<'idle' | 'analyzing' | 'preview' | 'importing' | 'done'>('idle')
   const [clienti, setClienti] = useState<ClientImport[]>([])
-  const [stats, setStats] = useState<{ total: number; noi: number; existenti: number } | null>(null)
+  const [deActualizat, setDeActualizat] = useState<{ id: string; reg_com: string }[]>([])
+  const [stats, setStats] = useState<{ total: number; noi: number; existenti: number; regCom: number } | null>(null)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
@@ -65,15 +70,36 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
         }))
 
       const supabase = createClient()
-      const { data: existenti } = await supabase
-        .from('clienti')
-        .select('denumire')
+      const existenti: { id: string; denumire: string; cod_fiscal: string | null; reg_com: string | null }[] = []
+      for (let from = 0; ; from += 1000) {
+        const { data } = await supabase.from('clienti').select('id, denumire, cod_fiscal, reg_com').range(from, from + 999)
+        existenti.push(...(data ?? []))
+        if (!data || data.length < 1000) break
+      }
 
-      const numeExistente = new Set((existenti ?? []).map((c: { denumire: string }) => c.denumire.toLowerCase()))
-      const noi = parsed.filter(c => !numeExistente.has(c.denumire.toLowerCase()))
+      // Potrivire după CUI (fără „RO"): Oblio poate schimba numele („S.R.L." → „SRL") și nr. Reg. Com.
+      // Numele se folosește doar pentru clienții fără cod fiscal.
+      const dupaCui = new Map(existenti.filter(c => curataCui(c.cod_fiscal)).map(c => [curataCui(c.cod_fiscal), c]))
+      const numeExistente = new Set(existenti.map(c => c.denumire.toLowerCase()))
+      const vazute = new Set<string>()
+      const noi: ClientImport[] = []
+      const actualizari: { id: string; reg_com: string }[] = []
+      for (const c of parsed) {
+        const cui = curataCui(c.cod_fiscal)
+        const cheie = cui || c.denumire.toLowerCase()
+        if (vazute.has(cheie)) continue
+        vazute.add(cheie)
+        const existent = cui ? dupaCui.get(cui) : undefined
+        if (existent) {
+          if (REG_COM_NOU.test(c.reg_com) && existent.reg_com !== c.reg_com) actualizari.push({ id: existent.id, reg_com: c.reg_com })
+        } else if (cui || !numeExistente.has(c.denumire.toLowerCase())) {
+          noi.push(c)
+        }
+      }
 
       setClienti(noi)
-      setStats({ total: parsed.length, noi: noi.length, existenti: parsed.length - noi.length })
+      setDeActualizat(actualizari)
+      setStats({ total: parsed.length, noi: noi.length, existenti: parsed.length - noi.length, regCom: actualizari.length })
       setStep('preview')
     } catch (err) {
       setError('Eroare: ' + (err as Error).message)
@@ -82,7 +108,7 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
   }
 
   async function handleImport() {
-    if (!clienti.length) return
+    if (!clienti.length && !deActualizat.length) return
     setStep('importing')
     setProgress(0)
     const supabase = createClient()
@@ -91,6 +117,9 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
     for (let i = 0; i < clienti.length; i += batchSize) {
       await supabase.from('clienti').insert(clienti.slice(i, i + batchSize))
       setProgress(Math.round(((i + batchSize) / clienti.length) * 100))
+    }
+    for (const u of deActualizat) {
+      await supabase.from('clienti').update({ reg_com: u.reg_com, updated_at: new Date().toISOString() }).eq('id', u.id)
     }
 
     setStep('done')
@@ -126,6 +155,9 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
           <p className="text-xs text-yellow-600 mt-0.5">Deja existenti</p>
         </div>
       </div>
+      {stats.regCom > 0 && (
+        <p className="text-sm text-gray-900">La {stats.regCom} clienți existenți se actualizează Nr. Reg. Com. în forma nouă.</p>
+      )}
       {stats.noi > 0 && (
         <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
           <table className="w-full text-xs">
@@ -152,14 +184,14 @@ export default function ImportClienti({ onDone }: { onDone: () => void }) {
         </div>
       )}
       <div className="flex gap-3 justify-end">
-        <button onClick={() => { setStep('idle'); setClienti([]); setStats(null) }}
+        <button onClick={() => { setStep('idle'); setClienti([]); setDeActualizat([]); setStats(null) }}
           className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
           Anuleaza
         </button>
-        {stats.noi > 0 && (
+        {(stats.noi > 0 || stats.regCom > 0) && (
           <button onClick={handleImport}
             className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg">
-            Importa {stats.noi} clienti noi
+            {stats.noi > 0 ? `Importa ${stats.noi} clienti noi` : `Actualizeaza ${stats.regCom} clienti`}
           </button>
         )}
       </div>

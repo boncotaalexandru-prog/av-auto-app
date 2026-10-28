@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { numarFactura } from '@/lib/numarFactura'
 
 interface Produs {
   id: string
@@ -28,6 +29,7 @@ interface FeedEvent {
   tip: EventTip
   timestamp: string   // ISO cu timp, pentru sortare + afișare
   numar?: number
+  eticheta?: string
   entitate?: string
   cantitate: number
   pret_vanzare?: number
@@ -132,7 +134,7 @@ export default function ProdusDetaliuPage() {
     )
 
     // ── Pasul 3: detalii facturi pentru rândurile găsite ────────────────────────
-    type FacturaInfo = { id: string; numar: number; data_emitere: string; tip: string; client: string | null }
+    type FacturaInfo = { id: string; numar: number; data_emitere: string; tip: string; client: string | null; eticheta: string }
     const facturiMap: Record<string, FacturaInfo> = {}
 
     if (fpRows.length > 0) {
@@ -140,12 +142,13 @@ export default function ProdusDetaliuPage() {
       if (facturaIds.length > 0) {
         const { data: facturiData } = await supabase
           .from('facturi')
-          .select('id, numar, data_emitere, tip, clienti(denumire)')
+          .select('id, numar, data_emitere, tip, oblio_serie, oblio_numar, clienti(denumire)')
           .in('id', facturaIds)
         for (const f of facturiData ?? []) {
           const cl = f.clienti
           const clientName = Array.isArray(cl) ? (cl[0]?.denumire ?? null) : ((cl as { denumire: string } | null)?.denumire ?? null)
-          facturiMap[f.id] = { id: f.id, numar: f.numar, data_emitere: f.data_emitere, tip: f.tip, client: clientName }
+          facturiMap[f.id] = { id: f.id, numar: f.numar, data_emitere: f.data_emitere, tip: f.tip, client: clientName,
+            eticheta: numarFactura(f as { numar: number; oblio_serie?: string | null; oblio_numar?: number | null }) }
         }
       }
     }
@@ -192,6 +195,7 @@ export default function ProdusDetaliuPage() {
         tip: isStorno ? 'storno' : 'factura',
         timestamp: f?.data_emitere ?? '',
         numar: f?.numar,
+        eticheta: f?.eticheta,
         entitate: f?.client ?? undefined,
         cantitate: Math.abs(fp.cantitate),
         pret_vanzare: fp.pret_vanzare,
@@ -331,8 +335,8 @@ export default function ProdusDetaliuPage() {
                   {/* Detalii */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {ev.numar != null && (
-                        <span className="font-mono font-bold text-gray-900">#{ev.numar}</span>
+                      {(ev.eticheta || ev.numar != null) && (
+                        <span className="font-mono font-bold text-gray-900">{ev.eticheta ?? `#${ev.numar}`}</span>
                       )}
                       {ev.entitate && (
                         <span className="text-sm text-gray-800 font-medium">{ev.entitate}</span>

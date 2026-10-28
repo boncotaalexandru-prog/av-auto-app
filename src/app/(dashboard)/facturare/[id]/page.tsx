@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { numarFactura } from '@/lib/numarFactura'
+import { emiteFactura as emiteFacturaOblio, emiteStorno } from '@/lib/emitereOblio'
 
 interface FacturaDetaliu {
   id: string
@@ -16,13 +18,8 @@ interface FacturaDetaliu {
   client_id: string
   client_denumire: string
   referinta_id: string | null
-}
-
-interface OblioSettings {
-  oblio_email: string
-  oblio_secret: string
-  cui: string
-  serie_factura: string
+  oblio_serie: string | null
+  oblio_numar: number | null
 }
 
 interface ProdusFactura {
@@ -52,7 +49,6 @@ export default function FacturaDetaliuPage() {
 
   const [factura, setFactura] = useState<FacturaDetaliu | null>(null)
   const [produse, setProduse] = useState<ProdusFactura[]>([])
-  const [oblioSettings, setOblioSettings] = useState<OblioSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [salvandStatus, setSalvandStatus] = useState(false)
   const [observatiiEdit, setObservatiiEdit] = useState('')
@@ -66,7 +62,7 @@ export default function FacturaDetaliuPage() {
     const supabase = createClient()
 
     const { data: f } = await supabase.from('facturi')
-      .select('id, numar, data_emitere, data_scadenta, status, tip, observatii, nota_interna, client_id, referinta_id, clienti(denumire)')
+      .select('id, numar, data_emitere, data_scadenta, status, tip, observatii, nota_interna, client_id, referinta_id, oblio_serie, oblio_numar, clienti(denumire)')
       .eq('id', id).single()
 
     if (!f) { setLoading(false); return }
@@ -80,12 +76,6 @@ export default function FacturaDetaliuPage() {
       .select('id, produs_id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
       .eq('factura_id', id)
     setProduse(p ?? [])
-
-    // Incarca setarile Oblio
-    const { data: set } = await supabase.from('setari').select('oblio_email, oblio_secret, cui, serie_factura').single()
-    if (set?.oblio_email && set?.oblio_secret && set?.cui && set?.serie_factura) {
-      setOblioSettings(set as OblioSettings)
-    }
 
     setLoading(false)
   }
@@ -112,122 +102,12 @@ export default function FacturaDetaliuPage() {
   async function emiteFactura() {
     if (!factura) return
     setSalvandStatus(true)
-    const supabase = createClient()
-
-    // ── 1. Scade stocul (FIFO) ───────────────────────────────────────────────
-    for (const p of produse) {
-      let deScazut = p.cantitate
-      if (p.stoc_id) {
-        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', p.stoc_id).single()
-        if (s) await supabase.from('stoc').update({ cantitate: Math.max(0, s.cantitate - deScazut) }).eq('id', p.stoc_id)
-        continue
-      }
-      if (!p.cod) continue
-      const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
-        .gt('cantitate', 0).eq('produs_cod', p.cod).order('updated_at', { ascending: true })
-      for (const intrare of (intrari ?? [])) {
-        if (deScazut <= 0) break
-        const scade = Math.min(deScazut, intrare.cantitate)
-        await supabase.from('stoc').update({ cantitate: intrare.cantitate - scade }).eq('id', intrare.id)
-        deScazut -= scade
-      }
-    }
-
-    // ── 2. Trimite la Oblio dacă există setări ───────────────────────────────
-    if (oblioSettings) {
-      try {
-        const { data: client } = await supabase.from('clienti')
-          .select('denumire, cod_fiscal, reg_com, adresa, localitate, judet, tara, telefon, email, platitor_tva')
-          .eq('id', factura.client_id).single()
-
-        if (!client?.denumire) {
-          alert('⚠️ Clientul nu are denumire completată.')
-          setSalvandStatus(false)
-          return
-        }
-
-        const oblioPayload = {
-          cif: oblioSettings.cui.replace(/^RO/i, '').trim(),
-          issueDate: factura.data_emitere,
-          dueDate: factura.data_scadenta ?? '',
-          seriesName: oblioSettings.serie_factura,
-          currency: 'RON',
-          language: 'RO',
-          isDraft: 0,
-          useStock: 0,
-          client: {
-            cif: (client.cod_fiscal ?? '').replace(/^RO/i, '').trim(),
-            name: client.denumire,
-            rc: client.reg_com ?? '',
-            address: client.adresa ?? '',
-            city: client.localitate ?? '',
-            county: client.judet ?? '',
-            country: client.tara ?? 'Romania',
-            phone: client.telefon ?? '',
-            email: client.email ?? '',
-            isTaxPayer: client.platitor_tva ? 1 : 0,
-          },
-          products: produse.map(p => ({
-            name: p.nume_produs,
-            code: '',
-            description: '',
-            price: parseFloat((p.pret_vanzare * 1.21).toFixed(4)), // Oblio asteapta pretul CU TVA inclus
-            quantity: p.cantitate,
-            unit: p.unitate || 'buc',
-            vatName: 'Normala',
-            vatPercentage: 21,
-            productType: 'Marfa',
-            management: 'Gestiune AV Auto',
-            useStock: 0,
-          })),
-          ...(factura.observatii ? { mentions: factura.observatii } : {}),
-        }
-
-        const res = await fetch('/api/oblio', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            oblioEmail: oblioSettings.oblio_email,
-            oblioSecret: oblioSettings.oblio_secret,
-            invoiceData: oblioPayload,
-          }),
-        })
-        const data = await res.json()
-
-        if (res.ok && (data.link || data.data?.link)) {
-          const link = data.link ?? data.data?.link
-          const seriesName = data.seriesName ?? data.data?.seriesName
-          const number = data.number ?? data.data?.number
-          await supabase.from('facturi')
-            .update({ status: 'emisa', oblio_link: link, oblio_serie: seriesName ?? null, oblio_numar: number ?? null })
-            .eq('id', id)
-          setFactura(f => f ? { ...f, status: 'emisa' } : f)
-          setSalvandStatus(false)
-          return
-        } else {
-          // Oblio a dat eroare — stocul a fost deja scăzut, dar NU marcam ca emisa
-          const errMsg = data.error ?? data.statusMessage ?? data.message ?? 'Eroare necunoscută Oblio'
-          alert(`⚠️ Oblio: ${errMsg}\n\nStocul a fost scăzut. Corectează în Oblio manual dacă e cazul.`)
-          // Marcam totusi ca emisa local (stocul a fost scazut)
-          await supabase.from('facturi').update({ status: 'emisa' }).eq('id', id)
-          setFactura(f => f ? { ...f, status: 'emisa' } : f)
-          setSalvandStatus(false)
-          return
-        }
-      } catch (e) {
-        alert(`⚠️ Conexiune Oblio eșuată: ${e}`)
-        // Marcam totusi emisa local deoarece stocul a fost deja scazut
-        await supabase.from('facturi').update({ status: 'emisa' }).eq('id', id)
-        setFactura(f => f ? { ...f, status: 'emisa' } : f)
-        setSalvandStatus(false)
-        return
-      }
-    }
-
-    // Fără Oblio — doar actualizăm statusul
-    await supabase.from('facturi').update({ status: 'emisa' }).eq('id', id)
-    setFactura(f => f ? { ...f, status: 'emisa' } : f)
+    const r = await emiteFacturaOblio(id)
     setSalvandStatus(false)
+    if (!r.ok) { alert(r.mesaj); load(); return }
+    if (r.dataSchimbata) alert(`Data emiterii a fost schimbată pe azi (${r.dataSchimbata.noua}).`)
+    if (r.avertisment) alert(`⚠️ Factura a fost emisă, dar:\n\n${r.avertisment}`)
+    load()
   }
 
   async function stergeFactura() {
@@ -262,62 +142,47 @@ export default function FacturaDetaliuPage() {
 
   async function storneazaIntegral() {
     if (!factura) return
-    if (!confirm(`Stornezi integral Factura #${factura.numar}? Se va crea o factură storno și stocul va fi restituit.`)) return
-    setSalvandStatus(true)
     const supabase = createClient()
 
-    // Creaza factura storno
-    const { data: storno, error } = await supabase.from('facturi').insert({
-      client_id: factura.client_id,
-      data_emitere: new Date().toISOString().slice(0, 10),
-      status: 'emisa',
-      tip: 'storno',
-      referinta_id: factura.id,
-      observatii: `Storno Factura #${factura.numar}`,
-    }).select('id').single()
-
-    if (error || !storno) {
-      alert('Eroare la creare storno: ' + error?.message)
-      setSalvandStatus(false)
-      return
+    // Scade ce a fost deja stornat parțial din fiecare linie
+    const { data: dejaStornate } = await supabase.from('facturi_produse')
+      .select('referinta_linie_id, cantitate')
+      .in('referinta_linie_id', produse.map(p => p.id))
+      .lt('cantitate', 0)
+    const stornat: Record<string, number> = {}
+    for (const l of dejaStornate ?? []) {
+      if (l.referinta_linie_id) stornat[l.referinta_linie_id] = (stornat[l.referinta_linie_id] ?? 0) + Math.abs(l.cantitate)
     }
+    const linii = produse
+      .map(p => ({ ...p, cantitate: p.cantitate - (stornat[p.id] ?? 0) }))
+      .filter(p => p.cantitate > 0)
+    if (!linii.length) { alert('Toate produsele de pe această factură au fost deja stornate.'); return }
 
-    // Insereaza produsele cu cantitate negativa, legate exact de linia originala
-    await supabase.from('facturi_produse').insert(
-      produse.map(p => ({
-        factura_id: storno.id,
-        referinta_linie_id: p.id,
+    if (!confirm(`Stornezi integral ${numarFactura(factura)}? Se va emite o factură storno (și în Oblio) și stocul va fi restituit.`)) return
+    setSalvandStatus(true)
+
+    const r = await emiteStorno({
+      clientId: factura.client_id,
+      dataEmitere: new Date().toISOString().slice(0, 10),
+      observatii: null,
+      integral: factura.id,
+      linii: linii.map(p => ({
+        linie_id: p.id,
+        factura_id: factura.id,
         produs_id: p.produs_id,
         stoc_id: p.stoc_id,
         nume_produs: p.nume_produs,
         cod: p.cod,
         producator: p.producator,
         unitate: p.unitate,
-        cantitate: -p.cantitate,
+        cantitate: p.cantitate,
         pret_achizitie: p.pret_achizitie,
         pret_vanzare: p.pret_vanzare,
-      }))
-    )
+      })),
+    })
 
-    // Restituie stocul
-    for (const p of produse) {
-      if (p.stoc_id) {
-        const { data: s } = await supabase.from('stoc').select('cantitate').eq('id', p.stoc_id).single()
-        if (s) await supabase.from('stoc').update({ cantitate: s.cantitate + p.cantitate }).eq('id', p.stoc_id)
-        continue
-      }
-      if (!p.cod) continue
-      const { data: intrari } = await supabase.from('stoc').select('id, cantitate')
-        .eq('produs_cod', p.cod).order('updated_at', { ascending: true }).limit(1)
-      if (intrari?.length) {
-        await supabase.from('stoc').update({ cantitate: intrari[0].cantitate + p.cantitate }).eq('id', intrari[0].id)
-      }
-    }
-
-    // Marcheaza factura originala ca anulata — nu mai poate fi stornata din nou
-    await supabase.from('facturi').update({ status: 'stornata' }).eq('id', id)
-
-    router.push(`/facturare/${storno.id}`)
+    if (!r.ok) { alert(r.mesaj); setSalvandStatus(false); return }
+    router.push(`/facturare/${r.stornoId}`)
   }
 
   if (loading) return <div className="text-sm text-gray-600 p-8">Se încarcă...</div>
@@ -337,7 +202,7 @@ export default function FacturaDetaliuPage() {
             ← Înapoi la facturi
           </button>
           <span className="text-gray-300">|</span>
-          <h2 className="text-2xl font-bold text-gray-900">Factura #{factura.numar}</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Factura {numarFactura(factura)}</h2>
           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${s.color}`}>
             {s.label}
           </span>

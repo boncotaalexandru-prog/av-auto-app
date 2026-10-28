@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
+import { filtreCod } from '@/lib/cautareCod'
 import ProdusNouModal from './ProdusNouModal'
 
 interface EchivalentProdus {
@@ -125,7 +126,7 @@ export default function EchivalentePopover({
     const excludeIds = new Set([produsId ?? '', ...echivalente.map(e => e.id)])
     supabase.from('produse')
       .select('id, cod, nume, producator, grup_echivalente_id')
-      .or(`nume.ilike.%${cautare}%,cod.ilike.%${cautare}%`)
+      .or([`nume.ilike.%${cautare}%`, `cod.ilike.%${cautare}%`, ...filtreCod(cautare)].join(','))
       .limit(10)
       .then(({ data }) =>
         setCautareResults((data ?? []).filter((p: CatalogProdus) => !excludeIds.has(p.id)))

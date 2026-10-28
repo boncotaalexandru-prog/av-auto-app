@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { filtreCod } from '@/lib/cautareCod'
 import { read, utils } from 'xlsx'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
 
@@ -178,7 +179,7 @@ export default function GestiunePage() {
       const { data } = await createClient().from('stoc')
         .select('*')
         .gt('cantitate', 0)
-        .or(`produs_nume.ilike.%${q}%,produs_cod.ilike.%${q}%,producator.ilike.%${q}%`)
+        .or([`produs_nume.ilike.%${q}%`, `produs_cod.ilike.%${q}%`, `producator.ilike.%${q}%`, ...filtreCod(q)].join(','))
         .order('produs_nume')
         .limit(200)
       setStocCautat((data as StocItem[]) ?? [])
@@ -262,7 +263,7 @@ export default function GestiunePage() {
     const q = val.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     const { data } = await createClient().from('produse')
       .select('id, cod, nume, unitate, producator, pret')
-      .or(`nume.ilike.%${q}%,cod.ilike.%${q}%`)
+      .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
       .limit(10)
     setProdResultsMap(m => ({ ...m, [key]: (data as ProdusSearch[]) ?? [] }))
   }
