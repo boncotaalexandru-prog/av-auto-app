@@ -42,6 +42,7 @@ export default function OferteP() {
   const [preluand, setPreluand] = useState<string | null>(null)
   const [selectate, setSelectate] = useState<Set<string>>(new Set())
   const [ofertePregate, setOfertePregate] = useState<Set<string>>(new Set())
+  const [oferteLivrate, setOferteLivrate] = useState<Set<string>>(new Set())
 
   // Filtre
   const [filtruStatus, setFiltruStatus] = useState<string>('toate')
@@ -67,12 +68,22 @@ export default function OferteP() {
       let query = supabase
         .from('oferte')
         .select('id, status, necesar_piese, created_at, preluat_de, client_id, clienti(denumire), clienti_masini(nr_inmatriculare, marca)')
-        .gte('created_at', filtruDeLa + 'T00:00:00')
-        .lte('created_at', filtruPanaLa + 'T23:59:59')
         .order('created_at', { ascending: false })
 
       // Filtre server-side — evita cap-ul PostgREST de 1000 rânduri
-      if (filtruStatus !== 'toate') query = query.eq('status', filtruStatus)
+      if (filtruStatus === 'livrat_nefacturat') {
+        // Plasa de siguranta: toate ofertele confirmate cu piese livrate, indiferent de perioada
+        const { data: livrate } = await supabase.from('oferte_produse')
+          .select('oferta_id, oferte!inner(status)')
+          .eq('oferte.status', 'confirmata')
+          .not('livrat_la', 'is', null)
+        const ids = [...new Set((livrate ?? []).map(l => l.oferta_id as string))]
+        if (!ids.length) { setOferte([]); setLoading(false); return }
+        query = query.eq('status', 'confirmata').in('id', ids)
+      } else {
+        query = query.gte('created_at', filtruDeLa + 'T00:00:00').lte('created_at', filtruPanaLa + 'T23:59:59')
+        if (filtruStatus !== 'toate') query = query.eq('status', filtruStatus)
+      }
 
       if (filtruClientDebounced.trim()) {
         const { data: clientiMatch } = await supabase
@@ -91,13 +102,14 @@ export default function OferteP() {
 
       // Verificare stoc pentru ofertele confirmate
       const confirmate = list.filter(o => o.status === 'confirmata').map(o => o.id)
-      if (!confirmate.length) { setOfertePregate(new Set()); return }
+      if (!confirmate.length) { setOfertePregate(new Set()); setOferteLivrate(new Set()); return }
 
       const { data: produse } = await supabase
         .from('oferte_produse')
-        .select('oferta_id, produs_id, cod, cantitate')
+        .select('oferta_id, produs_id, cod, cantitate, livrat_la')
         .in('oferta_id', confirmate)
 
+      setOferteLivrate(new Set((produse ?? []).filter(p => p.livrat_la).map(p => p.oferta_id)))
       if (!produse?.length) { setOfertePregate(new Set()); return }
 
       const toateProdusIds = [...new Set(produse.filter(p => p.produs_id).map(p => p.produs_id as string))]
@@ -256,6 +268,17 @@ export default function OferteP() {
                   {val.label}
                 </button>
               ))}
+              <button
+                onClick={() => setFiltruStatus(filtruStatus === 'livrat_nefacturat' ? 'toate' : 'livrat_nefacturat')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                  filtruStatus === 'livrat_nefacturat'
+                    ? 'bg-amber-600 text-white border-transparent'
+                    : 'bg-amber-50 text-amber-900 border-amber-300 hover:border-amber-400'
+                }`}
+                title="Oferte confirmate cu piese date clientului, încă nefacturate — din orice perioadă"
+              >
+                📦 Livrate nefacturate
+              </button>
             </div>
           </div>
 
@@ -384,6 +407,11 @@ export default function OferteP() {
                         {ePregatita && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-600 text-white">
                             ✓ Pregătit
+                          </span>
+                        )}
+                        {o.status === 'confirmata' && oferteLivrate.has(o.id) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-600 text-white">
+                            📦 Livrat nefacturat
                           </span>
                         )}
                       </div>
