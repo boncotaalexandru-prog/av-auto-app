@@ -221,19 +221,6 @@ function FacturarePageInner() {
   // Ofertele din care se face factura (legate la salvare, trec pe „facturat" la emitere)
   const [oferteSursa, setOferteSursa] = useState<string[]>([])
 
-  function resetNou() {
-    setClientSearch(''); setClientId(null); setRanduri([])
-    setModal(false); setForm(emptyRand()); setProdSearch('')
-    setEditIdx(null); salvandRef.current = false; setSalvand(false)
-    setDataEmitere(new Date().toISOString().slice(0, 10))
-    setTermenPlata(0)
-    setObservatii('')
-    setEditFacturaId(null)
-    setNotaInterna('')
-    setOferteSursa([])
-    setView('nou')
-  }
-
   // Precompletare din oferte: ?oferta_id=... (una) sau ?oferta_ids=id1,id2,... (factura cumulata)
   useEffect(() => {
     const ids = (searchParams.get('oferta_ids') ?? searchParams.get('oferta_id') ?? '')
@@ -844,11 +831,6 @@ function FacturarePageInner() {
               className="px-5 py-2.5 font-bold rounded-xl text-sm shadow-sm border border-purple-300 text-purple-800 bg-purple-50 hover:bg-purple-100">
               ↩ Factură storno
             </button>
-            <button onClick={resetNou}
-              className="px-5 py-2.5 text-white font-bold rounded-xl text-sm shadow-sm"
-              style={{ backgroundColor: '#0f172a' }}>
-              + Factură nouă
-            </button>
           </div>
         </div>
 
@@ -913,12 +895,7 @@ function FacturarePageInner() {
             <div className="px-6 py-16 text-center">
               <p className="text-4xl mb-3">🧾</p>
               <p className="text-gray-800 font-semibold mb-1">Nicio factură emisă</p>
-              <p className="text-sm text-gray-600 mb-5">Apasă butonul de mai sus pentru a emite prima factură.</p>
-              <button onClick={resetNou}
-                className="px-5 py-2.5 text-white font-bold rounded-xl text-sm"
-                style={{ backgroundColor: '#0f172a' }}>
-                + Factură nouă
-              </button>
+              <p className="text-sm text-gray-900">Facturile se fac din oferte confirmate: Oferte → oferta → „Generează factură”.</p>
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -1215,7 +1192,7 @@ function FacturarePageInner() {
           ← Înapoi la facturi
         </button>
         <span className="text-gray-300">|</span>
-        <h2 className="text-2xl font-bold text-gray-900">Factură nouă</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{editFacturaId ? 'Editează factura' : 'Factură din ofertă'}</h2>
       </div>
 
       {/* Client + date factura */}
@@ -1305,10 +1282,13 @@ function FacturarePageInner() {
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h3 className="text-sm font-semibold text-gray-900">Produse</h3>
-          <button onClick={() => deschideModal()}
-            className="px-3 py-1.5 bg-gray-900 text-white text-sm font-semibold rounded-lg">
-            + Adaugă produs
-          </button>
+          {/* Factura din oferta are exact piesele ofertei — pentru alte piese se modifica oferta */}
+          {oferteSursa.length === 0 && (
+            <button onClick={() => deschideModal()}
+              className="px-3 py-1.5 bg-gray-900 text-white text-sm font-semibold rounded-lg">
+              + Adaugă produs
+            </button>
+          )}
         </div>
 
         {randuri.length === 0 ? (
@@ -1359,7 +1339,9 @@ function FacturarePageInner() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center gap-1 justify-end">
                       <button onClick={() => deschideModal(i)} className="text-xs text-blue-600 font-semibold px-2 py-1 rounded hover:bg-blue-50">✏</button>
-                      <button onClick={() => setRanduri(prev => prev.filter(x => x._key !== r._key))} className="text-xs text-red-600 font-semibold px-2 py-1 rounded hover:bg-red-50">✕</button>
+                      {oferteSursa.length === 0 && (
+                        <button onClick={() => setRanduri(prev => prev.filter(x => x._key !== r._key))} className="text-xs text-red-600 font-semibold px-2 py-1 rounded hover:bg-red-50">✕</button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1427,13 +1409,15 @@ function FacturarePageInner() {
             <div className="px-6 py-5 space-y-4">
               <div ref={prodRef} className="relative">
                 <label className="block text-sm font-medium text-gray-900 mb-1.5">Produs</label>
+                {/* Piesa din oferta nu se poate inlocui cu alt produs — doar pret, cantitate, intrare de stoc */}
                 <input type="text" value={prodSearch}
+                  readOnly={!!form.oferta_produs_id}
                   onChange={e => { setProdSearch(e.target.value); setShowProdList(true) }}
-                  onFocus={() => setShowProdList(true)}
+                  onFocus={() => { if (!form.oferta_produs_id) setShowProdList(true) }}
                   placeholder="Caută după nume sau cod..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${form.oferta_produs_id ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                 />
-                {showProdList && prodResults.length > 0 && (
+                {showProdList && !form.oferta_produs_id && prodResults.length > 0 && (
                   <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
                     {prodResults.map(p => {
                       const cantStoc = stocMap[p.id] ?? (p.cod ? stocMap[p.cod] : 0) ?? 0
