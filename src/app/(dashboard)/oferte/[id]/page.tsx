@@ -44,6 +44,7 @@ interface Oferta {
   masina_id: string | null
   preluat_de: string | null
   oferta_partial_ref: string | null
+  factura_id: string | null
   clienti: { denumire: string } | null
   clienti_masini: { nr_inmatriculare: string | null; marca: string | null; vin: string | null } | null
 }
@@ -89,6 +90,7 @@ const STATUS: Record<string, { label: string; color: string }> = {
   finalizata:          { label: 'Finalizata',          color: '#059669' },
   confirmata:          { label: 'Confirmata',          color: '#7c3aed' },
   confirmata_partial:  { label: 'Confirmat Partial',   color: '#0891b2' },
+  in_facturare:        { label: 'In facturare',        color: '#475569' },
   facturat:            { label: 'Facturat',            color: '#0f172a' },
   anulata:             { label: 'Anulata',             color: '#dc2626' },
 }
@@ -157,6 +159,7 @@ export default function OfertaPage() {
   const [modalEchivalente, setModalEchivalente] = useState<Array<{ id: string; cod: string | null; nume: string; producator: string | null; unitate: string | null; stoc: number }>>([])
   const [loadingEchivalente, setLoadingEchivalente] = useState(false)
   const [pretSalvat, setPretSalvat] = useState<Record<string, boolean>>({})
+  const [isAdmin, setIsAdmin] = useState(false)
   const prodRef = useRef<HTMLDivElement>(null)
   const furnRef = useRef<HTMLDivElement>(null)
 
@@ -165,7 +168,7 @@ export default function OfertaPage() {
     const supabase = createClient()
     Promise.all([
       supabase.from('oferte')
-        .select('id, numar, status, necesar_piese, client_id, masina_id, preluat_de, oferta_partial_ref, clienti(denumire), clienti_masini(nr_inmatriculare, marca, vin)')
+        .select('id, numar, status, necesar_piese, client_id, masina_id, preluat_de, oferta_partial_ref, factura_id, clienti(denumire), clienti_masini(nr_inmatriculare, marca, vin)')
         .eq('id', id).single(),
       supabase.from('oferte_produse')
         .select('*, furnizori(denumire), produse(id, grup_echivalente_id)')
@@ -177,6 +180,15 @@ export default function OfertaPage() {
       setLoading(false)
     })
   }, [id])
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase.from('profiles').select('role').eq('id', user.id).single()
+        .then(({ data }) => { if (data?.role === 'admin') setIsAdmin(true) })
+    })
+  }, [])
 
   // Cautare produse din catalog + stoc disponibil (inclusiv stoc fara link la produse)
   useEffect(() => {
@@ -779,6 +791,15 @@ export default function OfertaPage() {
                     🔒 Facturat
                   </span>
                 )}
+                {['in_facturare', 'facturat'].includes(oferta.status) && oferta.factura_id && (
+                  <a
+                    href={`/facturare/${oferta.factura_id}`}
+                    className="px-4 py-1.5 text-white text-sm font-bold rounded-lg no-underline"
+                    style={{ backgroundColor: '#475569' }}
+                  >
+                    → Vezi factura
+                  </a>
+                )}
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-0.5">
                 <span className="text-sm text-gray-900">
@@ -1022,13 +1043,16 @@ export default function OfertaPage() {
             Cerere #{oferta.numar} — {oferta.clienti?.denumire}
           </p>
           <div className="flex gap-2">
-            <button
-              onClick={() => updateStatus('facturat')}
-              disabled={actualizand}
-              className="px-4 py-2.5 text-gray-700 font-semibold rounded-lg disabled:opacity-50 text-sm border border-gray-300 hover:bg-gray-50"
-            >
-              Marchează facturat
-            </button>
+            {/* Doar pentru ofertele vechi, facturate inainte ca factura sa se lege de oferta */}
+            {isAdmin && (
+              <button
+                onClick={() => { if (confirm('Marchezi oferta facturată fără factură în aplicație? Folosește doar pentru oferte vechi, facturate deja.')) updateStatus('facturat') }}
+                disabled={actualizand}
+                className="px-4 py-2.5 text-gray-700 font-semibold rounded-lg disabled:opacity-50 text-sm border border-gray-300 hover:bg-gray-50"
+              >
+                Marchează facturat
+              </button>
+            )}
             <button
               onClick={() => router.push(`/facturare?oferta_id=${id}`)}
               disabled={actualizand}

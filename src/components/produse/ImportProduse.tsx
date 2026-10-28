@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { read, utils } from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
+import { cheieCod } from '@/lib/cautareCod'
 
 interface ProdusImport {
   cod: string
@@ -57,20 +58,25 @@ export default function ImportProduse({ onDone }: { onDone: () => void }) {
       while (true) {
         const { data } = await supabase
           .from('produse')
-          .select('cod, nume')
+          .select('cod_cautare, nume')
           .range(from, from + pageSize - 1)
         if (!data || data.length === 0) break
         data.forEach(p => {
-          if (p.cod) codExistente.add(p.cod.trim().toLowerCase())
+          if (p.cod_cautare) codExistente.add(p.cod_cautare)
           if (p.nume) numeExistente.add(p.nume.trim().toLowerCase())
         })
         if (data.length < pageSize) break
         from += pageSize
       }
 
+      // Codul se compară după cheie („HU 719/7 X" = „HU719/7X", „EL136790" = „136.790"),
+      // iar dublurile din același fișier se importă o singură dată
       const noi = parsed.filter(p => {
-        if (p.cod && codExistente.has(p.cod.trim().toLowerCase())) return false
-        if (!p.cod && numeExistente.has(p.nume.trim().toLowerCase())) return false
+        const cheie = cheieCod(p.cod)
+        if (cheie && codExistente.has(cheie)) return false
+        if (!cheie && numeExistente.has(p.nume.trim().toLowerCase())) return false
+        if (cheie) codExistente.add(cheie)
+        else numeExistente.add(p.nume.trim().toLowerCase())
         return true
       })
       const existenteCount = parsed.length - noi.length

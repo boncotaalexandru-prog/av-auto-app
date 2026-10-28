@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { numarFactura } from '@/lib/numarFactura'
 import { emiteFactura as emiteFacturaOblio, emiteStorno } from '@/lib/emitereOblio'
+import { elibereazaOferte } from '@/lib/oferteFactura'
 
 interface FacturaDetaliu {
   id: string
@@ -54,6 +55,7 @@ export default function FacturaDetaliuPage() {
   const [observatiiEdit, setObservatiiEdit] = useState('')
   const [notaInternaEdit, setNotaInternaEdit] = useState('')
   const [salvandNote, setSalvandNote] = useState(false)
+  const [oferteLegate, setOferteLegate] = useState<{ id: string; numar: number | null }[]>([])
 
   useEffect(() => { load() }, [id])
 
@@ -76,6 +78,9 @@ export default function FacturaDetaliuPage() {
       .select('id, produs_id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
       .eq('factura_id', id)
     setProduse(p ?? [])
+
+    const { data: of } = await supabase.from('oferte').select('id, numar').eq('factura_id', id)
+    setOferteLegate(of ?? [])
 
     setLoading(false)
   }
@@ -136,6 +141,8 @@ export default function FacturaDetaliuPage() {
       }
     }
 
+    // Ofertele facturii redevin confirmate, ca să poată fi facturate din nou
+    await elibereazaOferte(id)
     await supabase.from('facturi').delete().eq('id', id)
     router.push('/facturare')
   }
@@ -211,6 +218,11 @@ export default function FacturaDetaliuPage() {
               STORNO
             </span>
           )}
+          {oferteLegate.map(o => (
+            <a key={o.id} href={`/oferte/${o.id}`} className="text-sm font-medium text-blue-700 hover:text-blue-900">
+              Oferta #{o.numar ?? '—'}
+            </a>
+          ))}
         </div>
 
         {/* Actiuni status */}

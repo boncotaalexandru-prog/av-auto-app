@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { verificaClientPentruFactura, verificaFacturaInOblio } from '@/lib/anafFacturare'
 import { clientPentruOblio, type ClientFacturare } from '@/lib/oblioClient'
 import { numarFactura } from '@/lib/numarFactura'
+import { marcheazaOferteFacturate } from '@/lib/oferteFactura'
 
 export interface OblioSettings {
   oblio_email: string
@@ -167,6 +168,7 @@ export async function emiteFactura(id: string): Promise<RezultatEmitere> {
   if (!setari) {
     // Fără Oblio configurat — doar actualizăm statusul local
     await supabase.from('facturi').update({ status: 'emisa' }).eq('id', id)
+    await marcheazaOferteFacturate(id)
     return { ok: true, avertisment: null, dataSchimbata: null }
   }
 
@@ -208,6 +210,7 @@ export async function emiteFactura(id: string): Promise<RezultatEmitere> {
   await supabase.from('facturi')
     .update({ status: 'emisa', oblio_link: r.link, oblio_serie: r.seriesName, oblio_numar: r.number })
     .eq('id', id)
+  await marcheazaOferteFacturate(id)
   const avertisment = await verificaFacturaInOblio({
     oblioEmail: setari.oblio_email, oblioSecret: setari.oblio_secret, cifFirma: setari.cui,
     seriesName: r.seriesName, number: r.number, cifTrimis: clientOblio.cif, vatPayerTrimis: clientOblio.vatPayer,
@@ -264,11 +267,15 @@ export async function emiteStorno(p: {
 
   if (setari) {
     const originala = p.integral ? originale?.find(f => f.id === p.integral) : undefined
-    // dacă originala a avut deja un storno parțial, stornarea totală din Oblio ar dubla liniile acelea
-    const { count: stornariAnterioare } = originala
-      ? await supabase.from('facturi_produse').select('id', { count: 'exact', head: true })
-        .in('referinta_linie_id', p.linii.map(l => l.linie_id)).lt('cantitate', 0)
-      : { count: null }
+    // dacă originala a avut deja un storno parțial (pe ORICARE linie, inclusiv una stornată complet
+    // și deci lipsă din p.linii), stornarea totală din Oblio ar dubla liniile acelea
+    let stornariAnterioare = 0
+    if (originala) {
+      const { data: liniiOriginale } = await supabase.from('facturi_produse').select('id').eq('factura_id', originala.id)
+      const { count } = await supabase.from('facturi_produse').select('id', { count: 'exact', head: true })
+        .in('referinta_linie_id', (liniiOriginale ?? []).map(l => l.id)).lt('cantitate', 0)
+      stornariAnterioare = count ?? 0
+    }
     let invoiceData: object
 
     if (originala?.oblio_serie && originala?.oblio_numar && !stornariAnterioare) {

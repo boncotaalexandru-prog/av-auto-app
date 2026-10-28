@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { filtreCod } from '@/lib/cautareCod'
+import { filtreCod, produseCuAcelasiCod } from '@/lib/cautareCod'
 import { read, utils } from 'xlsx'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
 
@@ -303,8 +303,14 @@ export default function GestiunePage() {
   ) {
     for (const p of produse) {
       if (!p.produs_nume.trim() || p.cantitate === 0) continue
+      // Dacă produsul nu e ales din catalog, îl căutăm după cod oricum ar fi scris
+      // („EL136790" pe NIR = „136.790" în catalog) și folosim codul din catalog, ca stocul să nu se dubleze
+      let produsCatalog: { id: string; cod: string | null } | null = null
+      if (!p.produs_id && p.produs_cod?.trim()) {
+        produsCatalog = (await produseCuAcelasiCod(supabase, p.produs_cod))[0] ?? null
+      }
       // Unicitatea e dată de COD (când există), nu de nume
-      const cod = p.produs_cod?.trim()
+      const cod = (produsCatalog?.cod ?? p.produs_cod)?.trim()
       const { data: stocEx } = await (cod
         ? supabase.from('stoc').select('id, cantitate').eq('produs_cod', cod).maybeSingle()
         : furnId
@@ -330,7 +336,7 @@ export default function GestiunePage() {
         await supabase.from('stoc').update(updatePayload).eq('id', stocEx.id)
       } else if (delta === 1 && p.cantitate > 0) {
         // Daca produsul nu exista in catalog, il cream automat
-        let produsId = p.produs_id || null
+        let produsId = p.produs_id || produsCatalog?.id || null
         if (!produsId && p.produs_nume.trim()) {
           const { data: prodNou } = await supabase.from('produse').insert({
             nume: p.produs_nume.trim(),
@@ -344,7 +350,7 @@ export default function GestiunePage() {
 
         await supabase.from('stoc').insert({
           produs_id: produsId,
-          produs_cod: p.produs_cod || null,
+          produs_cod: cod || null,
           produs_nume: p.produs_nume,
           producator: p.producator || null,
           cantitate: p.cantitate,
@@ -626,8 +632,9 @@ export default function GestiunePage() {
       const prodIds: (string | null)[] = await Promise.all(chunk.map(async p => {
         const cod = p.produs_cod?.trim() || null
         if (cod) {
-          const { data: ex } = await supabase.from('produse').select('id').eq('cod', cod).maybeSingle()
-          if (ex) return ex.id
+          // după cod oricum ar fi scris; rândul din stoc primește codul din catalog
+          const ex = (await produseCuAcelasiCod(supabase, cod))[0]
+          if (ex) { if (ex.cod) p.produs_cod = ex.cod; return ex.id }
         }
         const { data: nou } = await supabase.from('produse').insert({
           nume: p.produs_nume.trim(),

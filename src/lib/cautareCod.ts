@@ -1,6 +1,7 @@
 // Căutare după cod de produs, indiferent cum e scris.
 // Aceeași regulă e în baza de date: funcția public.cheie_cod → coloana cod_cautare
 // (supabase/produse_cod_cautare_migration.sql). Modifică-le împreună.
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** „HU 719/7 X" → „HU7197X", „EL136790" → „136790" (Elring), „LMI26772" → „26772" (Lemförder). */
 export function cheieCod(t: string | null | undefined): string {
@@ -27,4 +28,19 @@ export function cheiCautare(q: string): string[] {
 /** Bucățile de filtru PostgREST (pentru .or()) pe coloana cu cheia de căutare. */
 export function filtreCod(q: string, coloana = 'cod_cautare'): string[] {
   return cheiCautare(q).map(k => `${coloana}.ilike.%${k}%`)
+}
+
+export interface ProdusGasit { id: string; cod: string | null; nume: string; producator: string | null }
+
+/**
+ * Produsele care au deja același cod, oricum ar fi scris. Folosit înainte de a crea un produs nou.
+ * `cuVariante` adaugă și varianta Lemförder fără sufix — doar pentru sugestii arătate omului.
+ * Produsul cu codul scris identic vine primul.
+ */
+export async function produseCuAcelasiCod(supabase: SupabaseClient, cod: string, cuVariante = false): Promise<ProdusGasit[]> {
+  const chei = cuVariante ? cheiCautare(cod) : [cheieCod(cod)].filter(k => k.length >= 2)
+  if (!chei.length) return []
+  const { data } = await supabase.from('produse').select('id, cod, nume, producator').in('cod_cautare', chei)
+  const t = cod.trim().toUpperCase()
+  return ((data ?? []) as ProdusGasit[]).sort((a, b) => Number((b.cod ?? '').trim().toUpperCase() === t) - Number((a.cod ?? '').trim().toUpperCase() === t))
 }

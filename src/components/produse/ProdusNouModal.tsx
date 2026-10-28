@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { produseCuAcelasiCod, type ProdusGasit } from '@/lib/cautareCod'
 
 interface ProdusNou {
   id: string
@@ -31,19 +32,26 @@ export default function ProdusNouModal({ open, onClose, onSaved, numeInitial }: 
   const [form, setForm] = useState({ ...EMPTY, nume: numeInitial ?? '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Produse care au deja același cod (scris altfel) — omul alege: folosește-l sau creează totuși
+  const [existente, setExistente] = useState<ProdusGasit[]>([])
 
   // Resetare la deschidere
   function handleOpen() {
     setForm({ ...EMPTY, nume: numeInitial ?? '' })
     setError(null)
+    setExistente([])
   }
 
   if (!open) return null
 
-  async function handleSave() {
+  async function handleSave(creeazaTotusi = false) {
     if (!form.nume.trim()) { setError('Denumirea este obligatorie.'); return }
     setSaving(true)
     setError(null)
+    if (form.cod.trim() && !creeazaTotusi) {
+      const gasite = await produseCuAcelasiCod(createClient(), form.cod, true)
+      if (gasite.length) { setExistente(gasite); setSaving(false); return }
+    }
     const { data, error: err } = await createClient()
       .from('produse')
       .insert({
@@ -56,6 +64,16 @@ export default function ProdusNouModal({ open, onClose, onSaved, numeInitial }: 
       .single()
     setSaving(false)
     if (err) { setError('Eroare: ' + err.message); return }
+    onSaved(data as ProdusNou)
+    onClose()
+  }
+
+  async function folosesteExistent(id: string) {
+    setSaving(true)
+    const { data, error: err } = await createClient()
+      .from('produse').select('id, cod, nume, producator, unitate, pret').eq('id', id).single()
+    setSaving(false)
+    if (err || !data) { setError('Eroare: ' + (err?.message ?? 'produsul nu a fost găsit')); return }
     onSaved(data as ProdusNou)
     onClose()
   }
@@ -100,7 +118,7 @@ export default function ProdusNouModal({ open, onClose, onSaved, numeInitial }: 
               <input
                 type="text"
                 value={form.cod}
-                onChange={e => setForm(f => ({ ...f, cod: e.target.value }))}
+                onChange={e => { setForm(f => ({ ...f, cod: e.target.value })); setExistente([]) }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="ex: 882200"
               />
@@ -129,12 +147,42 @@ export default function ProdusNouModal({ open, onClose, onSaved, numeInitial }: 
             />
           </div>
 
+          {existente.length > 0 && (
+            <div className="border border-yellow-300 bg-yellow-50 rounded-lg p-3 space-y-2">
+              <p className="text-sm font-semibold text-gray-900">
+                Codul există deja în catalog{existente.length > 1 ? ` (${existente.length} produse)` : ''}:
+              </p>
+              {existente.map(p => (
+                <div key={p.id} className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-mono font-semibold text-gray-900">{p.cod}</p>
+                    <p className="text-sm text-gray-900 truncate">{p.nume}{p.producator ? ` · ${p.producator}` : ''}</p>
+                  </div>
+                  <button
+                    onClick={() => folosesteExistent(p.id)}
+                    disabled={saving}
+                    className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg disabled:opacity-40 whitespace-nowrap"
+                  >
+                    Folosește-l
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => handleSave(true)}
+                disabled={saving}
+                className="text-sm text-gray-900 underline disabled:opacity-40"
+              >
+                E alt produs (ex. alt producător) — creează totuși
+              </button>
+            </div>
+          )}
+
         </div>
 
         {/* Footer */}
         <div className="px-6 pb-6">
           <button
-            onClick={handleSave}
+            onClick={() => handleSave()}
             disabled={saving || !form.nume.trim()}
             className="w-full py-3 bg-gray-900 hover:bg-gray-700 text-white font-semibold rounded-lg disabled:opacity-40 transition-colors"
           >

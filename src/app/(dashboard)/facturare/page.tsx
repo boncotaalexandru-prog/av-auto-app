@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { filtreCod } from '@/lib/cautareCod'
 import { numarFactura } from '@/lib/numarFactura'
 import { emiteFactura as emiteFacturaOblio, emiteStorno as emiteStornoOblio } from '@/lib/emitereOblio'
+import { legaOferteDeFactura, elibereazaOferte } from '@/lib/oferteFactura'
 
 // ─── Tipuri ─────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ async function fetchStocForProduct(
 
 interface RandFactura {
   _key: string
+  oferta_produs_id: string | null
   produs_id: string | null
   stoc_id: string | null
   nume_produs: string
@@ -95,7 +97,7 @@ function stripDiacritice(s: string) {
 function emptyRand(): RandFactura {
   return {
     _key: Math.random().toString(36).slice(2),
-    produs_id: null, stoc_id: null, nume_produs: '', cod: '', producator: '',
+    oferta_produs_id: null, produs_id: null, stoc_id: null, nume_produs: '', cod: '', producator: '',
     unitate: 'buc', cantitate: 1, pret_achizitie: 0, pret_vanzare: 0,
     stoc_disponibil: 0, stoc_optiuni: [], stoc_idx: 0,
   }
@@ -144,7 +146,8 @@ function FacturarePageInner() {
     if (view === 'lista') loadFacturi(filtruDe, filtruPana)
   }, [view, filtruDe, filtruPana])
 
-  async function loadFacturi(deLa?: string, panaLa?: string) {
+  // Fara argumente reincarca perioada din filtru — toata istoria depaseste limita de 1000 de linii si totalurile ies 0
+  async function loadFacturi(deLa: string = filtruDe, panaLa: string = filtruPana) {
     setLoading(true)
     const supabase = createClient()
 
@@ -215,6 +218,8 @@ function FacturarePageInner() {
   const [warningItems, setWarningItems] = useState<string[]>([])
   const [editFacturaId, setEditFacturaId] = useState<string | null>(null)
   const [notaInterna, setNotaInterna] = useState('')
+  // Ofertele din care se face factura (legate la salvare, trec pe „facturat" la emitere)
+  const [oferteSursa, setOferteSursa] = useState<string[]>([])
 
   function resetNou() {
     setClientSearch(''); setClientId(null); setRanduri([])
@@ -225,120 +230,44 @@ function FacturarePageInner() {
     setObservatii('')
     setEditFacturaId(null)
     setNotaInterna('')
+    setOferteSursa([])
     setView('nou')
   }
 
-  // Precompletare din oferta (daca vine cu ?oferta_id=...)
+  // Precompletare din oferte: ?oferta_id=... (una) sau ?oferta_ids=id1,id2,... (factura cumulata)
   useEffect(() => {
-    const ofertaId = searchParams.get('oferta_id')
-    if (!ofertaId) return
-
-    async function preloadOferta() {
-      const supabase = createClient()
-
-      // Incarca oferta + client
-      const { data: oferta } = await supabase
-        .from('oferte')
-        .select('id, client_id, clienti(denumire)')
-        .eq('id', ofertaId)
-        .single()
-      if (!oferta) return
-
-      const client = Array.isArray(oferta.clienti) ? oferta.clienti[0] : (oferta.clienti as { denumire: string } | null)
-      setClientId(oferta.client_id)
-      setClientSearch(client?.denumire ?? '')
-      const { data: cl } = await supabase.from('clienti').select('termen_plata').eq('id', oferta.client_id).single()
-      setTermenPlata(cl?.termen_plata ?? 1)
-
-      // Incarca produsele ofertei
-      const { data: opRows } = await supabase
-        .from('oferte_produse')
-        .select('id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare, produs_id, stoc_id')
-        .eq('oferta_id', ofertaId)
-      if (!opRows?.length) { setView('nou'); return }
-
-      const randuriFilled: RandFactura[] = (await Promise.all(opRows.map(async (p): Promise<RandFactura[]> => {
-        const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod)
-
-        const totalDisponibil = optiuni.reduce((s, o) => s + o.cantitate, 0)
-
-        // FIFO split: o linie de factura per intrare de stoc cu pret diferit
-        const splits: RandFactura[] = []
-        let remaining = p.cantitate ?? 1
-
-        for (let i = 0; i < optiuni.length && remaining > 0; i++) {
-          const opt = optiuni[i]
-          const qty = Math.min(remaining, opt.cantitate)
-          splits.push({
-            _key: Math.random().toString(36).slice(2),
-            produs_id: p.produs_id ?? null,
-            stoc_id: opt.id,
-            nume_produs: p.nume_produs ?? '',
-            cod: p.cod ?? '',
-            producator: p.producator ?? '',
-            unitate: p.unitate ?? 'buc',
-            cantitate: qty,
-            pret_achizitie: opt.pret_achizitie,
-            pret_vanzare: p.pret_vanzare ?? 0,
-            stoc_disponibil: totalDisponibil,
-            stoc_optiuni: optiuni,
-            stoc_idx: i,
-          })
-          remaining -= qty
-        }
-
-        // Fallback daca stocul nu acopera cantitatea (sau nu exista stoc)
-        if (splits.length === 0 || remaining > 0) {
-          splits.push({
-            _key: Math.random().toString(36).slice(2),
-            produs_id: p.produs_id ?? null,
-            stoc_id: p.stoc_id ?? null,
-            nume_produs: p.nume_produs ?? '',
-            cod: p.cod ?? '',
-            producator: p.producator ?? '',
-            unitate: p.unitate ?? 'buc',
-            cantitate: remaining > 0 ? remaining : (p.cantitate ?? 1),
-            pret_achizitie: p.pret_achizitie ?? 0,
-            pret_vanzare: p.pret_vanzare ?? 0,
-            stoc_disponibil: totalDisponibil,
-            stoc_optiuni: optiuni,
-            stoc_idx: 0,
-          })
-        }
-
-        return splits
-      }))).flat()
-
-      setRanduri(randuriFilled)
-      setView('nou')
-    }
-
-    preloadOferta()
-  }, [searchParams])
-
-  // Precompletare din MULTIPLE oferte (daca vine cu ?oferta_ids=id1,id2,...)
-  useEffect(() => {
-    const ofertaIdsParam = searchParams.get('oferta_ids')
-    if (!ofertaIdsParam) return
-
-    const ids = ofertaIdsParam.split(',').map(s => s.trim()).filter(Boolean)
+    const ids = (searchParams.get('oferta_ids') ?? searchParams.get('oferta_id') ?? '')
+      .split(',').map(s => s.trim()).filter(Boolean)
     if (ids.length === 0) return
 
-    async function preloadOferteCumulate() {
+    async function preloadOferte() {
       const supabase = createClient()
 
-      // Incarca prima oferta pentru client
-      const { data: primeOferta } = await supabase
+      const { data: oferte } = await supabase
         .from('oferte')
-        .select('id, client_id, clienti(denumire)')
-        .eq('id', ids[0])
-        .single()
-      if (!primeOferta) return
+        .select('id, numar, status, client_id, clienti(denumire)')
+        .in('id', ids)
+      if (!oferte?.length) return
 
-      const client = Array.isArray(primeOferta.clienti) ? primeOferta.clienti[0] : (primeOferta.clienti as { denumire: string } | null)
-      setClientId(primeOferta.client_id)
+      // Doar ofertele confirmate se pot factura — una deja trimisa la facturare nu se mai preia
+      const indisponibile = oferte.filter(o => o.status !== 'confirmata')
+      if (indisponibile.length) {
+        alert(`Nu se poate factura: ${indisponibile.map(o => `oferta #${o.numar ?? '—'} (${o.status === 'in_facturare' ? 'are deja factură nefinalizată' : o.status})`).join(', ')}.`)
+        router.replace('/facturare')
+        return
+      }
+      if (new Set(oferte.map(o => o.client_id)).size > 1) {
+        alert('Ofertele selectate sunt pentru clienți diferiți.')
+        router.replace('/facturare')
+        return
+      }
+
+      const prima = oferte[0]
+      const client = Array.isArray(prima.clienti) ? prima.clienti[0] : (prima.clienti as { denumire: string } | null)
+      setClientId(prima.client_id)
       setClientSearch(client?.denumire ?? '')
-      const { data: cl } = await supabase.from('clienti').select('termen_plata').eq('id', primeOferta.client_id).single()
+      setOferteSursa(oferte.map(o => o.id))
+      const { data: cl } = await supabase.from('clienti').select('termen_plata').eq('id', prima.client_id).single()
       setTermenPlata(cl?.termen_plata ?? 1)
 
       // Incarca produsele din toate ofertele
@@ -362,6 +291,7 @@ function FacturarePageInner() {
           const qty = Math.min(remaining, opt.cantitate)
           splits.push({
             _key: Math.random().toString(36).slice(2),
+            oferta_produs_id: p.id,
             produs_id: p.produs_id ?? null,
             stoc_id: opt.id,
             nume_produs: p.nume_produs ?? '',
@@ -382,6 +312,7 @@ function FacturarePageInner() {
         if (splits.length === 0 || remaining > 0) {
           splits.push({
             _key: Math.random().toString(36).slice(2),
+            oferta_produs_id: p.id,
             produs_id: p.produs_id ?? null,
             stoc_id: p.stoc_id ?? null,
             nume_produs: p.nume_produs ?? '',
@@ -404,8 +335,8 @@ function FacturarePageInner() {
       setView('nou')
     }
 
-    preloadOferteCumulate()
-  }, [searchParams])
+    preloadOferte()
+  }, [searchParams, router])
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -627,6 +558,7 @@ function FacturarePageInner() {
       // Insert new products
       await supabase.from('facturi_produse').insert(randuri.map(r => ({
         factura_id: editFacturaId,
+        oferta_produs_id: r.oferta_produs_id,
         produs_id: r.produs_id,
         stoc_id: r.stoc_id,
         nume_produs: r.nume_produs,
@@ -668,6 +600,7 @@ function FacturarePageInner() {
     // 2. Insereaza produsele
     const { error: prodErr } = await supabase.from('facturi_produse').insert(randuri.map(r => ({
       factura_id: factura.id,
+      oferta_produs_id: r.oferta_produs_id,
       produs_id: r.produs_id,
       stoc_id: r.stoc_id,
       nume_produs: r.nume_produs,
@@ -685,9 +618,20 @@ function FacturarePageInner() {
       return
     }
 
-    // 3. Stocul se scade la EMITERE, nu la salvare ca nefinalizata
+    // 3. Leaga ofertele de factura — daca alta factura le-a luat intre timp, factura asta se anuleaza
+    const eroareOferte = await legaOferteDeFactura(factura.id, oferteSursa)
+    if (eroareOferte) {
+      await supabase.from('facturi').delete().eq('id', factura.id)
+      alert(eroareOferte)
+      salvandRef.current = false; setSalvand(false)
+      return
+    }
+
+    // 4. Stocul se scade la EMITERE, nu la salvare ca nefinalizata
 
     salvandRef.current = false; setSalvand(false)
+    setOferteSursa([])
+    router.replace('/facturare')
     setView('lista')
   }
 
@@ -709,7 +653,8 @@ function FacturarePageInner() {
     const supabase = createClient()
 
     // Stocul NU a fost scăzut la salvare (se scade doar la emitere)
-    // Deci nu trebuie restituit — ștergem direct factura
+    // Deci nu trebuie restituit — ștergem direct factura, iar ofertele ei redevin confirmate
+    await elibereazaOferte(id)
     await supabase.from('facturi').delete().eq('id', id)
     loadFacturi()
   }
@@ -732,9 +677,12 @@ function FacturarePageInner() {
 
     const { data: linii } = await supabase
       .from('facturi_produse')
-      .select('id, produs_id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
+      .select('id, oferta_produs_id, produs_id, stoc_id, nume_produs, cod, producator, unitate, cantitate, pret_achizitie, pret_vanzare')
       .eq('factura_id', facturaId)
     if (!linii) return
+
+    const { data: oferteLegate } = await supabase.from('oferte').select('id').eq('factura_id', facturaId)
+    setOferteSursa((oferteLegate ?? []).map(o => o.id))
 
     const randuriFilled: RandFactura[] = await Promise.all(linii.map(async (p) => {
       const optiuni = await fetchStocForProduct(supabase, p.produs_id, p.cod)
@@ -744,6 +692,7 @@ function FacturarePageInner() {
       const optSelec = optiuni[stocIdx]
       return {
         _key: Math.random().toString(36).slice(2),
+        oferta_produs_id: p.oferta_produs_id ?? null,
         produs_id: p.produs_id ?? null,
         stoc_id: optSelec?.id ?? p.stoc_id ?? null,
         nume_produs: p.nume_produs ?? '',
@@ -1276,13 +1225,15 @@ function FacturarePageInner() {
           <div className="md:col-span-1">
             <label className="block text-sm font-semibold text-gray-900 mb-2">Client</label>
             <div ref={clientRef} className="relative">
+              {/* Clientul vine din oferta — nu se poate schimba */}
               <input type="text" value={clientSearch}
+                readOnly={oferteSursa.length > 0}
                 onChange={e => { setClientSearch(e.target.value); setShowClientList(true); setClientId(null) }}
-                onFocus={() => setShowClientList(true)}
+                onFocus={() => { if (!oferteSursa.length) setShowClientList(true) }}
                 placeholder="Caută client..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${oferteSursa.length ? 'bg-gray-50 cursor-not-allowed' : ''}`}
               />
-              {showClientList && clientResults.length > 0 && (
+              {showClientList && !oferteSursa.length && clientResults.length > 0 && (
                 <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                   {clientResults.map(c => (
                     <button key={c.id} onClick={async () => {
