@@ -1,27 +1,18 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getUtilizator } from '@/lib/supabase/utilizator'
 
 export default async function AdminGuard({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const utilizator = await getUtilizator()
 
-  if (!user) {
+  if (!utilizator) {
     redirect('/login')
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') {
+  if (utilizator.profile?.role !== 'admin') {
     redirect('/dashboard')
   }
 

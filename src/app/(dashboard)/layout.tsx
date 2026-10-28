@@ -1,35 +1,37 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getSetariPublice, getUtilizator } from '@/lib/supabase/utilizator'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
-import type { Profile } from '@/types'
+import { UtilizatorProvider } from '@/components/auth/UtilizatorContext'
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const [utilizator, settings] = await Promise.all([
+    getUtilizator(),
+    getSetariPublice(),
+  ])
 
-  if (!user) {
+  if (!utilizator) {
     redirect('/login')
   }
 
-  const [{ data: profile }, { data: settings }] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase.from('settings').select('logo_url').eq('id', 1).single(),
-  ])
+  const { profile } = utilizator
+  const role = profile?.role ?? 'user'
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar role={profile?.role ?? 'user'} logoUrl={settings?.logo_url} />
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <Header profile={profile as Profile | null} />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <UtilizatorProvider
+      utilizator={{ id: utilizator.id, role, full_name: profile?.full_name ?? null }}
+    >
+      <div className="flex h-screen bg-gray-100">
+        <Sidebar role={role} logoUrl={settings?.logo_url} />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <Header profile={profile} />
+          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </UtilizatorProvider>
   )
 }

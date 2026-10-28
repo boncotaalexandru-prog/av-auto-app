@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUtilizator } from '@/components/auth/UtilizatorContext'
 import { filtreCod } from '@/lib/cautareCod'
 import { numarFactura } from '@/lib/numarFactura'
 import { emiteFactura as emiteFacturaOblio, emiteStorno as emiteStornoOblio } from '@/lib/emitereOblio'
@@ -117,6 +118,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 function FacturarePageInner() {
+  const eu = useUtilizator()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [view, setView] = useState<'lista' | 'nou' | 'storno'>('lista')
@@ -581,7 +583,6 @@ function FacturarePageInner() {
     }
 
     // 1. Creaza factura
-    const { data: { user } } = await supabase.auth.getUser()
     const scadenta = termenPlata > 0
       ? new Date(new Date(dataEmitere).getTime() + termenPlata * 86400000).toISOString().slice(0, 10)
       : null
@@ -593,7 +594,7 @@ function FacturarePageInner() {
       observatii: observatii.trim() || null,
       nota_interna: notaInterna.trim() || null,
       status: 'nefinalizata',
-      created_by: user?.id ?? null,
+      created_by: eu.id,
     }).select('id, numar').single()
 
     if (error || !factura) {

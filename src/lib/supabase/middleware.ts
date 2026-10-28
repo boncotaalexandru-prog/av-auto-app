@@ -30,9 +30,10 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getClaims verifica JWT-ul local (chei ES256, JWKS tinut in memorie) si
+  // reimprospateaza sesiunea cand expira — fara cerere la Auth la fiecare pagina.
+  const { data } = await supabase.auth.getClaims()
+  const user = data?.claims?.sub ? data.claims : null
 
   const pathname = request.nextUrl.pathname
   const isAuthPage = pathname === '/login'

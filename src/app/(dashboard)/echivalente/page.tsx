@@ -93,28 +93,34 @@ export default function EchivalentePage() {
     if (!cautare.trim() || !adaugandLaGrup) { setCautareResults([]); return }
     const grupCurent = grupuri.find(g => g.id === adaugandLaGrup)
     const excludeIds = new Set(grupCurent?.produse.map(p => p.id) ?? [])
-    createClient().from('produse')
+    let anulat = false
+    const t = setTimeout(() => createClient().from('produse')
       .select('id, cod, nume, producator, grup_echivalente_id')
       .or([`nume.ilike.%${cautare}%`, `cod.ilike.%${cautare}%`, ...filtreCod(cautare)].join(','))
       .limit(10)
-      .then(({ data }) => setCautareResults((data ?? []).filter((p: CatalogProdus) => !excludeIds.has(p.id))))
+      .then(({ data }) => { if (!anulat) setCautareResults((data ?? []).filter((p: CatalogProdus) => !excludeIds.has(p.id))) }), 250)
+    return () => { anulat = true; clearTimeout(t) }
   }, [cautare, adaugandLaGrup, grupuri])
 
   // Search for new group
   useEffect(() => {
     if (!cautareNouGrup.trim()) { setCautareNouGrupResults([]); return }
     const excludeIds = new Set(selectateNouGrup.map(p => p.id))
-    createClient().from('produse')
+    let anulat = false
+    const t = setTimeout(() => createClient().from('produse')
       .select('id, cod, nume, producator, grup_echivalente_id')
       .or([`nume.ilike.%${cautareNouGrup}%`, `cod.ilike.%${cautareNouGrup}%`, ...filtreCod(cautareNouGrup)].join(','))
       .limit(10)
-      .then(({ data }) => setCautareNouGrupResults((data ?? []).filter((p: CatalogProdus) => !excludeIds.has(p.id))))
+      .then(({ data }) => { if (!anulat) setCautareNouGrupResults((data ?? []).filter((p: CatalogProdus) => !excludeIds.has(p.id))) }), 250)
+    return () => { anulat = true; clearTimeout(t) }
   }, [cautareNouGrup, selectateNouGrup])
 
   // Search for adding to existing group (per-group search)
   useEffect(() => {
     const entries = Object.entries(cautareAdauga)
     if (!entries.length) return
+    let anulat = false
+    const t = setTimeout(() => {
     for (const [grupId, q] of entries) {
       if (!q.trim()) { setCautareAdaugaResults(prev => ({ ...prev, [grupId]: [] })); continue }
       const grupCurent = grupuri.find(g => g.id === grupId)
@@ -123,11 +129,13 @@ export default function EchivalentePage() {
         .select('id, cod, nume, producator, grup_echivalente_id')
         .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
         .limit(8)
-        .then(({ data }) => setCautareAdaugaResults(prev => ({
+        .then(({ data }) => { if (!anulat) setCautareAdaugaResults(prev => ({
           ...prev,
           [grupId]: (data ?? []).filter((p: CatalogProdus) => !excludeIds.has(p.id)),
-        })))
+        })) })
     }
+    }, 250)
+    return () => { anulat = true; clearTimeout(t) }
   }, [cautareAdauga, grupuri])
 
   async function scoateDinGrup(produsId: string, grupId: string) {

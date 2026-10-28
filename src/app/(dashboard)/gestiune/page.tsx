@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useUtilizator } from '@/components/auth/UtilizatorContext'
 import { filtreCod, produseCuAcelasiCod } from '@/lib/cautareCod'
 import { incarcaRezervari, alocaRezervari, type Rezervare } from '@/lib/rezervari'
 import { read, utils } from 'xlsx'
@@ -99,7 +100,7 @@ const TVA = 0.21
 
 export default function GestiunePage() {
   const [tab, setTab] = useState<'stoc' | 'nir'>('stoc')
-  const [isAdmin, setIsAdmin] = useState(false)
+  const isAdmin = useUtilizator().role === 'admin'
 
   // Modal Ajustare Stoc (admin only)
   const [modalAjustare, setModalAjustare] = useState(false)
@@ -163,12 +164,6 @@ export default function GestiunePage() {
 
   useEffect(() => {
     incarcaStoc()
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
-      supabase.from('profiles').select('role').eq('id', user.id).single()
-        .then(({ data }) => { if (data?.role === 'admin') setIsAdmin(true) })
-    })
   }, [])
   useEffect(() => { if (tab === 'nir') incarcaNir() }, [tab, nirFiltruDe, nirFiltruPana])
 

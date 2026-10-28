@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { reimprospateazaSetari } from '@/app/actions/setari'
 
 interface IbanEntry {
   iban: string
@@ -137,6 +138,7 @@ export default function SettingsForm() {
       setMessage({ type: 'error', text: 'Eroare la salvare: ' + error.message })
     } else {
       setMessage({ type: 'success', text: 'Setarile au fost salvate.' })
+      await reimprospateazaSetari()
       window.location.reload()
     }
   }

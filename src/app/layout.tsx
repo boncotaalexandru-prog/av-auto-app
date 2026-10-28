@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { createClient } from "@/lib/supabase/server";
+import { getSetariPublice } from "@/lib/supabase/utilizator";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,12 +15,7 @@ const geistMono = Geist_Mono({
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
-    const supabase = await createClient()
-    const { data } = await supabase
-      .from('settings')
-      .select('logo_url, company_name')
-      .eq('id', 1)
-      .single()
+    const data = await getSetariPublice()
 
     return {
       title: data?.company_name

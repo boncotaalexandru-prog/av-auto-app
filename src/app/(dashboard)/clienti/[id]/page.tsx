@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { filtreCod } from '@/lib/cautareCod'
@@ -175,16 +175,24 @@ export default function ClientPage() {
     setMasini(prev => prev.filter(m => m.id !== masinaId))
   }
 
-  async function cautaProdus(q: string) {
+  // Cauta dupa o pauza in tastare; doar ultima cautare isi afiseaza rezultatele
+  const cautareProdusRef = useRef<{ timer?: ReturnType<typeof setTimeout>; nr: number }>({ nr: 0 })
+  function cautaProdus(q: string) {
     setProdSearch(q)
     setPretForm(f => ({ ...f, produs_id: '', produs_cod: '', produs_nume: q, pret_catalog: '' }))
+    const c = cautareProdusRef.current
+    clearTimeout(c.timer)
+    const nr = ++c.nr
     if (q.trim().length < 2) { setProdResults([]); setShowProdDrop(false); return }
-    const { data } = await createClient().from('produse')
-      .select('id, cod, nume, pret')
-      .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
-      .limit(10)
-    setProdResults(data ?? [])
-    setShowProdDrop(true)
+    c.timer = setTimeout(async () => {
+      const { data } = await createClient().from('produse')
+        .select('id, cod, nume, pret')
+        .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
+        .limit(10)
+      if (nr !== c.nr) return
+      setProdResults(data ?? [])
+      setShowProdDrop(true)
+    }, 250)
   }
 
   function selectProdPret(p: { id: string; cod: string | null; nume: string; pret: number | null }) {

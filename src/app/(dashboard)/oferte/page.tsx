@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUtilizator } from '@/components/auth/UtilizatorContext'
 import { incarcaRezervari, incarcaStoc, cuDisponibil } from '@/lib/rezervari'
 import OfertaNoua from '@/components/oferte/OfertaNoua'
 
@@ -39,6 +40,7 @@ function defaultPanaLa() {
 }
 
 export default function OferteP() {
+  const eu = useUtilizator()
   const [oferte, setOferte] = useState<Oferta[]>([])
   const [loading, setLoading] = useState(true)
   const [refresh, setRefresh] = useState(0)
@@ -157,12 +159,10 @@ export default function OferteP() {
     e.stopPropagation()
     setPreluand(ofertaId)
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setPreluand(null); return }
 
     await supabase.from('oferte').update({
       status: 'in_lucru',
-      preluat_de: user.id,
+      preluat_de: eu.id,
       preluat_la: new Date().toISOString(),
     }).eq('id', ofertaId)
 

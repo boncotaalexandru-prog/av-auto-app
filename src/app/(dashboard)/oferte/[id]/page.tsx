@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUtilizator } from '@/components/auth/UtilizatorContext'
 import { filtreCod } from '@/lib/cautareCod'
 import { incarcaRezervari, incarcaStoc, cuDisponibil } from '@/lib/rezervari'
 import ProdusNouModal from '@/components/produse/ProdusNouModal'
@@ -168,8 +169,8 @@ export default function OfertaPage() {
   const [modalEchivalente, setModalEchivalente] = useState<Array<{ id: string; cod: string | null; nume: string; producator: string | null; unitate: string | null; stoc: number }>>([])
   const [loadingEchivalente, setLoadingEchivalente] = useState(false)
   const [pretSalvat, setPretSalvat] = useState<Record<string, boolean>>({})
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [eu, setEu] = useState<{ id: string; full_name: string | null } | null>(null)
+  const eu = useUtilizator()
+  const isAdmin = eu.role === 'admin'
   // Cât s-a stornat din fiecare piesă (după oferta_produs_id) — doar pe ofertele stornate
   const [stornatPePiesa, setStornatPePiesa] = useState<Record<string, number>>({})
   const prodRef = useRef<HTMLDivElement>(null)
@@ -193,36 +194,30 @@ export default function OfertaPage() {
     })
   }, [id])
 
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
-      supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
-        .then(({ data }) => {
-          if (data?.role === 'admin') setIsAdmin(true)
-          setEu({ id: user.id, full_name: data?.full_name ?? null })
-        })
-    })
-  }, [])
 
   // Cautare produse din catalog + stoc disponibil (inclusiv stoc fara link la produse)
   useEffect(() => {
     if (!prodSearch.trim()) { setProdResults([]); setStocMap({}); return }
     const supabase = createClient()
     const q = prodSearch.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    supabase.from('produse')
-      .select('id, cod, nume, unitate, pret, producator')
-      .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
-      .limit(15)
-      .then(async ({ data }) => {
+    // Asteapta pauza in tastare; raspunsurile unei cautari vechi se ignora
+    let anulat = false
+    const t = setTimeout(async () => {
+        // Catalog + stoc direct (produse importate fara link in catalog), in paralel
+        const [{ data }, { data: stocOrfan }] = await Promise.all([
+          supabase.from('produse')
+            .select('id, cod, nume, unitate, pret, producator')
+            .or([`nume.ilike.%${q}%`, `cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
+            .limit(15),
+          supabase.from('stoc')
+            .select('id, produs_cod, produs_nume, unitate, pret_achizitie, pret_lista, producator, cantitate')
+            .gt('cantitate', 0)
+            .is('produs_id', null)
+            .or([`produs_nume.ilike.%${q}%`, `produs_cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
+            .limit(5),
+        ])
+        if (anulat) return
         const prodList = data ?? []
-        // Cauta si in stoc direct (produse importate fara link in catalog)
-        const { data: stocOrfan } = await supabase.from('stoc')
-          .select('id, produs_cod, produs_nume, unitate, pret_achizitie, pret_lista, producator, cantitate')
-          .gt('cantitate', 0)
-          .is('produs_id', null)
-          .or([`produs_nume.ilike.%${q}%`, `produs_cod.ilike.%${q}%`, ...filtreCod(q)].join(','))
-          .limit(5)
         // Exclude stoc entries deja acoperite de un produs din catalog (acelasi cod)
         const prodCods = new Set(prodList.filter(p => p.cod).map(p => p.cod as string))
         const stocExtra: ProdusSearch[] = (stocOrfan ?? [])
@@ -247,8 +242,10 @@ export default function OfertaPage() {
           const key = row.produs_id ?? row.produs_cod ?? ''
           if (key) map[key] = (map[key] ?? 0) + row.cantitate
         }
+        if (anulat) return
         setStocMap(map)
-      })
+    }, 250)
+    return () => { anulat = true; clearTimeout(t) }
   }, [prodSearch])
 
   // Cautare furnizori — incarca si la focus (search gol), favorite primele
@@ -747,11 +744,8 @@ export default function OfertaPage() {
     // Daca se preia oferta si nu are inca responsabil, atribuie utilizatorul curent
     const updateData: Record<string, unknown> = { status: nou, updated_at: new Date().toISOString() }
     if (nou === 'in_lucru' && !oferta?.preluat_de) {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        updateData.preluat_de = user.id
-        updateData.preluat_la = new Date().toISOString()
-      }
+      updateData.preluat_de = eu.id
+      updateData.preluat_la = new Date().toISOString()
     }
     await supabase.from('oferte').update(updateData).eq('id', id)
     setOferta(o => o ? { ...o, status: nou } : o)
