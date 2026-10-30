@@ -167,6 +167,7 @@ export default function OfertaPage() {
   const [stocOptiuneIdx, setStocOptiuneIdx] = useState<number>(0)
   const [stocMap, setStocMap] = useState<Record<string, number>>({})
   const [pretSpecialClient, setPretSpecialClient] = useState<number | null>(null)
+  const [ultimaOfertare, setUltimaOfertare] = useState<{ cheie: string; pret: number; data: string; numar: number } | null>(null)
   const [editRandId, setEditRandId] = useState<string | null>(null)
   const [adaosInput, setAdaosInput] = useState('')
   const [modalEchivalente, setModalEchivalente] = useState<Array<{ id: string; cod: string | null; nume: string; producator: string | null; unitate: string | null; stoc: number }>>([])
@@ -294,6 +295,24 @@ export default function OfertaPage() {
   async function selectProdus(p: ProdusSearch) {
     const supabase = createClient()
     setPretSpecialClient(null)
+    setUltimaOfertare(null)
+
+    // Ultima ofertare catre acest client, din toate ofertele lui (fara oferta curenta)
+    const cheieProdus = p.cod || p.id
+    if (oferta?.client_id && cheieProdus) {
+      const ofProdQuery = supabase.from('oferte_produse')
+        .select('pret_vanzare, oferte!inner(numar, created_at)')
+        .eq('oferte.client_id', oferta.client_id)
+        .neq('oferte.status', 'anulata')
+        .neq('oferta_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      const { data: opRows } = p.cod ? await ofProdQuery.eq('cod', p.cod) : await ofProdQuery.eq('produs_id', p.id)
+      if (opRows?.length) {
+        const o = Array.isArray(opRows[0].oferte) ? opRows[0].oferte[0] : opRows[0].oferte
+        if (o) setUltimaOfertare({ cheie: cheieProdus, pret: opRows[0].pret_vanzare ?? 0, data: new Date(o.created_at).toLocaleDateString('ro-RO'), numar: o.numar })
+      }
+    }
 
     // Produs importat direct in stoc, fara intrare in catalog
     if (!p.id && p.stoc_id) {
@@ -1668,20 +1687,36 @@ export default function OfertaPage() {
                       <label className={`text-sm font-medium ${form.pret_achizitie > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
                         Pret vanzare
                       </label>
-                      {pretSpecialClient !== null && (
-                        <button type="button"
-                          onClick={() => {
-                            if (form.pret_achizitie > 0) {
-                              const adaos = ((pretSpecialClient! - form.pret_achizitie) / form.pret_achizitie * 100)
-                              setAdaosInput(adaos.toFixed(1))
-                              setForm(f => ({ ...f, pret_vanzare: pretSpecialClient! }))
-                            }
-                          }}
-                          className="text-xs font-bold rounded px-1.5 py-0.5"
-                          style={{ color: '#5b21b6', backgroundColor: '#ede9fe', border: '1px solid #a78bfa' }}>
-                          ⭐ {pretSpecialClient!.toFixed(2)} RON
-                        </button>
-                      )}
+                      <div className="flex gap-1 flex-wrap justify-end">
+                        {pretSpecialClient !== null && (
+                          <button type="button"
+                            onClick={() => {
+                              if (form.pret_achizitie > 0) {
+                                const adaos = ((pretSpecialClient! - form.pret_achizitie) / form.pret_achizitie * 100)
+                                setAdaosInput(adaos.toFixed(1))
+                                setForm(f => ({ ...f, pret_vanzare: pretSpecialClient! }))
+                              }
+                            }}
+                            className="text-xs font-bold rounded px-1.5 py-0.5"
+                            style={{ color: '#5b21b6', backgroundColor: '#ede9fe', border: '1px solid #a78bfa' }}>
+                            ⭐ {pretSpecialClient!.toFixed(2)} RON
+                          </button>
+                        )}
+                        {ultimaOfertare && ultimaOfertare.cheie === (form.cod || form.produs_id) && (
+                          <button type="button"
+                            onClick={() => {
+                              if (form.pret_achizitie > 0) {
+                                const adaos = ((ultimaOfertare.pret - form.pret_achizitie) / form.pret_achizitie * 100)
+                                setAdaosInput(adaos.toFixed(1))
+                                setForm(f => ({ ...f, pret_vanzare: ultimaOfertare.pret }))
+                              }
+                            }}
+                            className="text-xs font-semibold rounded px-1.5 py-0.5"
+                            style={{ color: '#92400e', backgroundColor: '#fffbeb', border: '1px solid #fcd34d' }}>
+                            📋 #{ultimaOfertare.numar} · {ultimaOfertare.data} · {ultimaOfertare.pret.toFixed(2)} RON
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <input
                       type="number" min="0" step="0.01"

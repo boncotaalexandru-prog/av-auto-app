@@ -428,25 +428,17 @@ function FacturarePageInner() {
 
     // Ultima ofertare — doar pentru clientul curent
     if (clientId) {
-      const { data: oferteClient } = await supabase.from('oferte')
-        .select('id, numar, created_at')
-        .eq('client_id', clientId)
-        .neq('status', 'anulata')
+      // Cauta in toate ofertele clientului, nu doar in cele mai recente
+      const ofProdQuery = supabase.from('oferte_produse')
+        .select('pret_vanzare, oferte!inner(numar, created_at)')
+        .eq('oferte.client_id', clientId)
+        .neq('oferte.status', 'anulata')
         .order('created_at', { ascending: false })
-        .limit(50)
-
-      if (oferteClient?.length) {
-        const ofertaIds = oferteClient.map(o => o.id)
-        const ofProdQuery = supabase.from('oferte_produse')
-          .select('pret_vanzare, oferta_id')
-          .in('oferta_id', ofertaIds)
-          .order('created_at', { ascending: false })
-          .limit(20)
-        const { data: opRows } = p.cod ? await ofProdQuery.eq('cod', p.cod) : await ofProdQuery.eq('produs_id', p.id)
-        if (opRows?.length) {
-          const o = oferteClient.find(oc => oc.id === opRows[0].oferta_id)
-          if (o) setUltimaOfertare({ pret: opRows[0].pret_vanzare ?? 0, data: new Date(o.created_at).toLocaleDateString('ro-RO'), numar: o.numar })
-        }
+        .limit(1)
+      const { data: opRows } = p.cod ? await ofProdQuery.eq('cod', p.cod) : await ofProdQuery.eq('produs_id', p.id)
+      if (opRows?.length) {
+        const o = Array.isArray(opRows[0].oferte) ? opRows[0].oferte[0] : opRows[0].oferte
+        if (o) setUltimaOfertare({ pret: opRows[0].pret_vanzare ?? 0, data: new Date(o.created_at).toLocaleDateString('ro-RO'), numar: o.numar })
       }
     }
 

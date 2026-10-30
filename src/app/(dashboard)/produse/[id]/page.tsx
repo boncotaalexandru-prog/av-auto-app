@@ -77,8 +77,10 @@ export default function ProdusDetaliuPage() {
     setProdus(p)
 
     // Filtre combinare: produs_id + cod (pentru nir_produse/stoc) și cod (pentru oferte/facturi)
-    const orPartsNir = [`produs_id.eq.${id}`, ...(p.cod ? [`produs_cod.eq.${p.cod}`] : [])]
-    const orPartsCod = [`produs_id.eq.${id}`, ...(p.cod ? [`cod.eq.${p.cod}`] : [])]
+    // Codul merge intre ghilimele: virgula din coduri ca „STR-M12X1,5" ar rupe filtrul si ar goli istoricul
+    const codFiltru = `"${(p.cod ?? '').replace(/(["\\])/g, '\\$1')}"`
+    const orPartsNir = [`produs_id.eq.${id}`, ...(p.cod ? [`produs_cod.eq.${codFiltru}`] : [])]
+    const orPartsCod = [`produs_id.eq.${id}`, ...(p.cod ? [`cod.eq.${codFiltru}`] : [])]
 
     const NIR_SEL = 'id, created_at, cantitate, pret_achizitie, nir(id, numar, data_intrare, furnizor_nume)'
     const OF_SEL  = 'id, created_at, cantitate, pret_vanzare, oferte(id, numar, clienti(denumire))'
